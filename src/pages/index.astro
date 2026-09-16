@@ -1,0 +1,10 @@
+---
+import Base from '../layouts/Base.astro';
+import { SignIn } from '../components/auth/SignIn';
+---
+
+<Base title="Acceso">
+  <main class="mx-auto flex min-h-dvh max-w-5xl flex-col items-center justify-center px-6 py-16">
+    <SignIn client:only="react" />
+  </main>
+</Base>

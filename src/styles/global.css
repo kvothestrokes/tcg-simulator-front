@@ -1,0 +1,444 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/oxanium';
+@import '@fontsource-variable/inter';
+
+/* =============================================================================
+   Sistema de diseño — HUD de Cosmic Breaker
+
+   Todo sale del wireframe: fondo casi negro, trazos finos de 1px, paneles con
+   las cuatro esquinas cortadas, áreas de soltar punteadas y títulos en
+   mayúsculas muy espaciados. Monocromo por defecto; el color solo aparece
+   cuando significa algo (turno activo, calor, error).
+   ========================================================================== */
+
+@theme {
+  --color-void: #08090b;
+  --color-hull: #0e1013;
+  --color-plate: #141619;
+
+  --color-stroke: rgba(255, 255, 255, 0.82);
+  --color-stroke-dim: rgba(255, 255, 255, 0.28);
+  --color-stroke-faint: rgba(255, 255, 255, 0.12);
+
+  --color-ink: #f4f6f8;
+  --color-ink-dim: rgba(244, 246, 248, 0.62);
+  --color-ink-faint: rgba(244, 246, 248, 0.38);
+
+  --color-signal: #67e8f9; /* turno activo, foco, enlaces */
+  --color-heat: #fb923c; /* calor acumulándose */
+  --color-heat-max: #f43f5e; /* calor por encima del umbral */
+  --color-ok: #4ade80;
+
+  --font-display: 'Oxanium Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-void);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    /* Rejilla tenue: da profundidad sin competir con las cartas. */
+    background-image:
+      radial-gradient(ellipse 120% 80% at 50% 0%, rgba(103, 232, 249, 0.06), transparent 60%),
+      linear-gradient(rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+    background-size: 100% 100%, 44px 44px, 44px 44px;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  .display {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  button {
+    font-family: inherit;
+  }
+
+  ::selection {
+    background: var(--color-signal);
+    color: #000;
+  }
+
+  *:focus-visible {
+    outline: 2px solid var(--color-signal);
+    outline-offset: 2px;
+  }
+
+  /* Barras de scroll discretas dentro de las zonas. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+  }
+}
+
+@layer components {
+  /* ---------------------------------------------------------------------------
+     Panel con esquinas cortadas.
+
+     El borde de 1px se consigue con dos capas recortadas con el mismo
+     clip-path: la de fuera lleva el color del trazo, la de dentro el del
+     relleno, separadas por 1px de padding. Es la única forma de tener un borde
+     nítido en una forma no rectangular.
+     ------------------------------------------------------------------------ */
+  .hud {
+    --cut: 14px;
+    --stroke: var(--color-stroke);
+    position: relative;
+    display: flex;
+    background: var(--stroke);
+    padding: 1px;
+    clip-path: polygon(
+      var(--cut) 0,
+      calc(100% - var(--cut)) 0,
+      100% var(--cut),
+      100% calc(100% - var(--cut)),
+      calc(100% - var(--cut)) 100%,
+      var(--cut) 100%,
+      0 calc(100% - var(--cut)),
+      0 var(--cut)
+    );
+  }
+
+  .hud__inner {
+    flex: 1;
+    min-width: 0;
+    background: var(--color-hull);
+    clip-path: inherit;
+  }
+
+  .hud--dim {
+    --stroke: var(--color-stroke-dim);
+  }
+
+  .hud--active {
+    --stroke: var(--color-signal);
+    box-shadow: 0 0 22px -8px var(--color-signal);
+  }
+
+  .hud--danger {
+    --stroke: var(--color-heat-max);
+  }
+
+  /* Título de panel: como en el wireframe, fuera del área punteada. */
+  .hud-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    line-height: 1;
+    color: var(--color-ink);
+  }
+
+  .hud-sub {
+    font-size: 0.625rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-ink-faint);
+  }
+
+  /* ---------------------------------------------------------------------------
+     Área de soltar: el rectángulo punteado del wireframe.
+     ------------------------------------------------------------------------ */
+  .dropzone {
+    border: 1px dashed var(--color-stroke-dim);
+    background: rgba(255, 255, 255, 0.012);
+    transition:
+      border-color 120ms ease,
+      background-color 120ms ease;
+  }
+
+  .dropzone[data-over='true'] {
+    border-color: var(--color-signal);
+    border-style: solid;
+    background: rgba(103, 232, 249, 0.09);
+  }
+
+  .dropzone[data-target='true'] {
+    border-color: rgba(103, 232, 249, 0.55);
+  }
+
+  /* ---------------------------------------------------------------------------
+     Controles
+     ------------------------------------------------------------------------ */
+  .btn {
+    --cut: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1rem;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 0.8125rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-ink);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--color-stroke-dim);
+    clip-path: polygon(
+      var(--cut) 0,
+      100% 0,
+      100% calc(100% - var(--cut)),
+      calc(100% - var(--cut)) 100%,
+      0 100%,
+      0 var(--cut)
+    );
+    cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease,
+      color 120ms ease;
+  }
+
+  .btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.11);
+    border-color: var(--color-stroke);
+  }
+
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .btn--primary {
+    background: var(--color-ink);
+    color: #000;
+    border-color: var(--color-ink);
+  }
+
+  .btn--primary:hover:not(:disabled) {
+    background: var(--color-signal);
+    border-color: var(--color-signal);
+    color: #000;
+  }
+
+  .btn--ghost {
+    background: transparent;
+  }
+
+  .btn--danger {
+    border-color: rgba(244, 63, 94, 0.5);
+    color: #fda4af;
+  }
+
+  .btn--danger:hover:not(:disabled) {
+    background: rgba(244, 63, 94, 0.14);
+    border-color: var(--color-heat-max);
+  }
+
+  .btn--sm {
+    --cut: 6px;
+    padding: 0.3rem 0.6rem;
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+  }
+
+  /* Botón cuadrado de +/- para contadores. */
+  .step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    font-family: var(--font-display);
+    font-size: 1rem;
+    line-height: 1;
+    color: var(--color-ink);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--color-stroke-dim);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .step:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: var(--color-stroke);
+  }
+
+  .step:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .field {
+    width: 100%;
+    padding: 0.65rem 0.85rem;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--color-stroke-dim);
+    color: var(--color-ink);
+    font-family: var(--font-display);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .field::placeholder {
+    color: var(--color-ink-faint);
+    letter-spacing: 0.08em;
+  }
+
+  .field:focus {
+    border-color: var(--color-signal);
+    outline: none;
+  }
+
+  .field--text {
+    font-family: var(--font-sans);
+    letter-spacing: normal;
+    text-transform: none;
+  }
+
+  /* ---------------------------------------------------------------------------
+     Carta
+     ------------------------------------------------------------------------ */
+  .card {
+    --cut: 7px;
+    position: relative;
+    aspect-ratio: 5 / 7;
+    background: linear-gradient(160deg, var(--color-plate), #0b0d10);
+    border: 1px solid var(--color-stroke-dim);
+    clip-path: polygon(
+      var(--cut) 0,
+      100% 0,
+      100% calc(100% - var(--cut)),
+      calc(100% - var(--cut)) 100%,
+      0 100%,
+      0 var(--cut)
+    );
+    cursor: grab;
+    user-select: none;
+    transition:
+      transform 120ms ease,
+      border-color 120ms ease,
+      box-shadow 120ms ease;
+  }
+
+  .card:hover {
+    border-color: var(--color-stroke);
+    transform: translateY(-2px);
+    z-index: 5;
+  }
+
+  .card[data-selected='true'] {
+    border-color: var(--color-signal);
+    box-shadow: 0 0 0 1px var(--color-signal);
+  }
+
+  .card[data-tapped='true'] {
+    transform: rotate(90deg) scale(0.86);
+  }
+
+  .card[data-tapped='true']:hover {
+    transform: rotate(90deg) scale(0.9);
+  }
+
+  .card[data-facedown='true'] {
+    background:
+      repeating-linear-gradient(
+        135deg,
+        rgba(255, 255, 255, 0.05) 0 6px,
+        transparent 6px 12px
+      ),
+      linear-gradient(160deg, #15181d, #0a0c0f);
+  }
+
+  .card--dragging {
+    opacity: 0.4;
+  }
+
+  /* Franja de facción en el borde izquierdo de la carta. */
+  .card__strip {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+  }
+
+  /* ---------------------------------------------------------------------------
+     Medidores (recursos, calor)
+     ------------------------------------------------------------------------ */
+  .meter {
+    display: flex;
+    gap: 2px;
+    height: 0.5rem;
+  }
+
+  .meter__seg {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.09);
+    transition: background-color 140ms ease;
+  }
+
+  .meter__seg[data-on='true'] {
+    background: var(--meter-color, var(--color-ink));
+  }
+
+  .meter__seg[data-threshold='true'] {
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+  }
+
+  /* Línea decorativa entre paneles, como los conectores del wireframe. */
+  .connector {
+    height: 3px;
+    background: var(--color-stroke);
+  }
+
+  .scanline-top {
+    position: relative;
+  }
+
+  .scanline-top::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      var(--color-stroke-dim) 20%,
+      var(--color-stroke-dim) 80%,
+      transparent
+    );
+  }
+}
+
+@layer utilities {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Reservado para el tablero del rival: se voltea el orden de las filas, no
+     el texto, para que sus etiquetas sigan siendo legibles. */
+  .board-mirror {
+    flex-direction: column-reverse;
+  }
+
+  @keyframes pulse-ring {
+    0%,
+    100% {
+      opacity: 0.35;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  .animate-ping-slow {
+    animation: pulse-ring 2s ease-in-out infinite;
+  }
+}

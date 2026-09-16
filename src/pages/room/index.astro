@@ -1,0 +1,12 @@
+---
+import Base from '../../layouts/Base.astro';
+import { GameTable } from '../../components/game/GameTable';
+---
+
+<Base title="Mesa" fullscreen>
+  <!--
+    La app es estática, así que el código de sala viaja en la query:
+    /room/?code=ABC123. El componente lo lee en el cliente.
+  -->
+  <GameTable client:only="react" />
+</Base>

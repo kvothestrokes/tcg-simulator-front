@@ -1,0 +1,10 @@
+---
+import Base from '../layouts/Base.astro';
+import { Lobby } from '../components/lobby/Lobby';
+---
+
+<Base title="Hangar">
+  <main class="mx-auto flex min-h-dvh w-full max-w-5xl flex-col justify-center px-6 py-10">
+    <Lobby client:only="react" />
+  </main>
+</Base>

@@ -1,0 +1,31 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description?: string;
+  /** La mesa ocupa toda la ventana y no debe hacer scroll. */
+  fullscreen?: boolean;
+}
+
+const {
+  title,
+  description = 'Simulador de mesa virtual para Cosmic Breaker.',
+  fullscreen = false,
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <meta name="color-scheme" content="dark" />
+    <title>{title} · Cosmic Breaker</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  </head>
+  <body class={fullscreen ? 'h-dvh overflow-hidden' : 'min-h-dvh'}>
+    <slot />
+  </body>
+</html>
