@@ -18,6 +18,7 @@ import { Wordmark } from '../ui/Wordmark';
 import { useSession } from '../../hooks/useSession';
 import { ApiError, RealtimeApi, errorMessage, type HealthResponse, type RoomResponse } from '../../lib/api';
 import { roomPath } from '../../lib/config';
+import { loginPath } from '../../lib/navigation';
 import { getAccessToken, shortName } from '../../lib/session';
 
 const RECENT_KEY = 'cb:recent-rooms';
@@ -48,7 +49,9 @@ export function Lobby() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
 
   useEffect(() => {
-    if (!loading && !identity) window.location.href = '/';
+    if (loading || identity) return;
+    const next = `${window.location.pathname}${window.location.search}`;
+    window.location.href = loginPath(next);
   }, [loading, identity]);
 
   // Las salas recientes se guardan en local, pero su estado puede haber

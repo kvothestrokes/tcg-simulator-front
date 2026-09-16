@@ -18,18 +18,21 @@ export const REALTIME_URL = read('PUBLIC_REALTIME_URL', 'http://localhost:8080')
 export const REALTIME_WS_URL = REALTIME_URL.replace(/^http/, 'ws');
 
 export const SUPABASE_URL = read('PUBLIC_SUPABASE_URL');
-export const SUPABASE_ANON_KEY = read('PUBLIC_SUPABASE_ANON_KEY');
-
-/** Hay Supabase configurado y utilizable. */
-export const SUPABASE_ENABLED = SUPABASE_URL !== '' && SUPABASE_ANON_KEY !== '';
 
 /**
- * Permite entrar como invitado pidiendo un JWT a POST /v1/dev/token.
- *
- * Ese endpoint solo existe en el backend con APP_ENV=development, así que
- * activarlo por error en producción no abre ninguna puerta: simplemente falla.
+ * Clave pública de Supabase. Preferimos la publishable key actual; la anon
+ * JWT-based se acepta todavía porque muchos proyectos no han rotado.
  */
-export const DEV_AUTH_ENABLED = read('PUBLIC_DEV_AUTH').toLowerCase() === 'true';
+export const SUPABASE_PUBLISHABLE_KEY =
+  read('PUBLIC_SUPABASE_PUBLISHABLE_KEY') || read('PUBLIC_SUPABASE_ANON_KEY');
+
+/** @deprecated Usa SUPABASE_PUBLISHABLE_KEY. Conservado para no romper imports. */
+export const SUPABASE_ANON_KEY = SUPABASE_PUBLISHABLE_KEY;
+
+export const TURNSTILE_SITE_KEY = read('PUBLIC_TURNSTILE_SITE_KEY');
+
+/** Hay Supabase configurado y utilizable. */
+export const SUPABASE_ENABLED = SUPABASE_URL !== '' && SUPABASE_PUBLISHABLE_KEY !== '';
 
 /** Ruta de la sala. La app es estática, por eso el código va en la query. */
 export function roomPath(code: string): string {

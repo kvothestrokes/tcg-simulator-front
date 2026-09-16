@@ -1,16 +1,14 @@
 /**
  * Cliente REST del servicio de tiempo real.
  *
- * Cubre todos los endpoints del backend:
- *
  *   GET  /health                      estado del servicio
  *   POST /v1/rooms                    crear sala (el creador ocupa el asiento 1)
  *   GET  /v1/rooms/{code}             estado de la sala (solo sus jugadores)
  *   POST /v1/rooms/{code}/join        ocupar el primer asiento libre
  *   POST /v1/rooms/{code}/finish      terminar la partida
- *   POST /v1/dev/token                JWT de desarrollo (solo APP_ENV=development)
  *
  * El WebSocket va aparte, en lib/realtime/client.ts.
+ * La sesión sale de Supabase Auth, no de este cliente.
  */
 
 import { REALTIME_URL } from './config';
@@ -48,12 +46,6 @@ export interface HealthResponse {
   rooms: number;
   connections: number;
   uptimeSeconds: number;
-}
-
-export interface DevTokenResponse {
-  userId: string;
-  token: string;
-  expiresAt: string;
 }
 
 /**
@@ -97,7 +89,7 @@ type TokenProvider = () => Promise<string | null>;
 interface RequestOptions {
   method?: 'GET' | 'POST';
   body?: unknown;
-  /** Con false no se envía Authorization (solo /health y /v1/dev/token). */
+  /** Con false no se envía Authorization (solo /health). */
   auth?: boolean;
   signal?: AbortSignal;
 }
@@ -107,8 +99,6 @@ export class RealtimeApi {
     private readonly getToken: TokenProvider,
     private readonly baseUrl: string = REALTIME_URL,
   ) {}
-
-  // --- endpoints -------------------------------------------------------------
 
   /** Estado del servicio. No requiere sesión. */
   health(signal?: AbortSignal): Promise<HealthResponse> {
@@ -145,20 +135,6 @@ export class RealtimeApi {
       { method: 'POST' },
     );
   }
-
-  /**
-   * JWT de desarrollo. Solo existe con APP_ENV=development en el backend; en
-   * producción devuelve 404.
-   */
-  devToken(userId?: string): Promise<DevTokenResponse> {
-    return this.request<DevTokenResponse>('/v1/dev/token', {
-      method: 'POST',
-      body: userId ? { userId } : {},
-      auth: false,
-    });
-  }
-
-  // --- transporte ------------------------------------------------------------
 
   private async request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
     const { method = 'GET', body, auth = true, signal } = opts;

@@ -1,24 +1,28 @@
 /**
  * Pantalla de acceso.
  *
- * Dos vías según la configuración:
- *   · Supabase Auth por magic link (producción).
- *   · Invitado, pidiendo un JWT a POST /v1/dev/token, que solo existe con el
- *     backend en modo desarrollo.
+ *   · Un clic como invitado (Supabase Anonymous Sign-Ins).
+ *   · Magic link por correo, opcional.
+ *   · Turnstile si hay site key (producción).
  *
- * Además muestra el estado del servicio de tiempo real: si está caído, más vale
- * saberlo aquí que al abrir una sala.
+ * Si llegas con ?next=/room/?code=…, tras entrar vuelves a esa sala.
  */
 
-import { useCallback, useEffect, useState, type SyntheticEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type SyntheticEvent } from 'react';
 
 import { Panel } from '../ui/Panel';
 import { StatusDot } from '../ui/StatusDot';
 import { Wordmark } from '../ui/Wordmark';
+import { TurnstileField } from './TurnstileField';
 import { useSession } from '../../hooks/useSession';
 import { RealtimeApi, errorMessage, type HealthResponse } from '../../lib/api';
-import { DEV_AUTH_ENABLED, REALTIME_URL, SUPABASE_ENABLED } from '../../lib/config';
-import { defaultCallsign, devSignIn, signInWithEmail } from '../../lib/session';
+import {
+  REALTIME_URL,
+  SUPABASE_ENABLED,
+  TURNSTILE_SITE_KEY,
+} from '../../lib/config';
+import { nextFromLocation, postLoginPath } from '../../lib/navigation';
+import { defaultCallsign, signInAsGuest, signInWithEmail } from '../../lib/session';
 
 const api = new RealtimeApi(async () => null);
 
@@ -31,11 +35,13 @@ export function SignIn() {
   const [error, setError] = useState<string | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [healthError, setHealthError] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
-  // Si ya hay sesión, esta pantalla no pinta nada.
+  const destination = useMemo(() => postLoginPath(nextFromLocation()), []);
+
   useEffect(() => {
-    if (!loading && identity) window.location.href = '/lobby/';
-  }, [loading, identity]);
+    if (!loading && identity) window.location.href = destination;
+  }, [loading, identity, destination]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -48,14 +54,24 @@ export function SignIn() {
     return () => controller.abort();
   }, []);
 
+  const requireCaptcha = Boolean(TURNSTILE_SITE_KEY);
+  const captchaReady = !requireCaptcha || Boolean(captchaToken);
+
   const handleMagicLink = useCallback(
     async (event: SyntheticEvent) => {
       event.preventDefault();
+      if (!captchaReady) {
+        setError('Completa la verificación anti-bots antes de continuar.');
+        return;
+      }
       setBusy(true);
       setError(null);
       setNotice(null);
       try {
-        await signInWithEmail(email.trim());
+        const origin = window.location.origin;
+        await signInWithEmail(email.trim(), `${origin}${destination}`, {
+          captchaToken: captchaToken ?? undefined,
+        });
         setNotice('Te enviamos un enlace de acceso. Revisa tu correo.');
       } catch (err) {
         setError(errorMessage(err));
@@ -63,25 +79,26 @@ export function SignIn() {
         setBusy(false);
       }
     },
-    [email],
+    [captchaReady, captchaToken, destination, email],
   );
 
   const handleGuest = useCallback(async () => {
+    if (!captchaReady) {
+      setError('Completa la verificación anti-bots antes de continuar.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      const identity = await devSignIn(callsign.trim() || undefined);
-      window.location.href = '/lobby/';
-      return identity;
+      await signInAsGuest(callsign.trim() || undefined, {
+        captchaToken: captchaToken ?? undefined,
+      });
+      window.location.href = destination;
     } catch (err) {
-      setError(
-        errorMessage(err) +
-          ' El modo invitado necesita el backend con APP_ENV=development.',
-      );
+      setError(errorMessage(err));
       setBusy(false);
-      return null;
     }
-  }, [callsign]);
+  }, [callsign, captchaReady, captchaToken, destination]);
 
   if (loading || identity) {
     return <p className="hud-sub animate-ping-slow">Comprobando sesión…</p>;
@@ -96,38 +113,14 @@ export function SignIn() {
       </p>
 
       <Panel cut={16} innerClassName="p-6">
-        {SUPABASE_ENABLED ? (
-          <form onSubmit={handleMagicLink} className="mb-6">
-            <label className="hud-sub mb-2 block" htmlFor="email">
-              Acceso con correo
-            </label>
-            <div className="flex gap-2">
-              <input
-                id="email"
-                type="email"
-                required
-                autoComplete="email"
-                className="field field--text"
-                placeholder="piloto@ejemplo.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-              <button type="submit" className="btn btn--primary shrink-0" disabled={busy}>
-                Enviar
-              </button>
-            </div>
-          </form>
-        ) : (
+        {!SUPABASE_ENABLED ? (
           <p className="mb-6 text-xs text-[var(--color-ink-faint)]">
-            Supabase Auth no está configurado. Define{' '}
-            <code className="text-[var(--color-ink-dim)]">PUBLIC_SUPABASE_URL</code> y{' '}
-            <code className="text-[var(--color-ink-dim)]">PUBLIC_SUPABASE_ANON_KEY</code> para
-            habilitar el acceso con correo.
+            Configura <code className="text-[var(--color-ink-dim)]">PUBLIC_SUPABASE_URL</code> y{' '}
+            <code className="text-[var(--color-ink-dim)]">PUBLIC_SUPABASE_PUBLISHABLE_KEY</code> para
+            poder entrar.
           </p>
-        )}
-
-        {DEV_AUTH_ENABLED ? (
-          <div className={SUPABASE_ENABLED ? 'scanline-top pt-6' : ''}>
+        ) : (
+          <>
             <label className="hud-sub mb-2 block" htmlFor="callsign">
               Entrar como invitado
             </label>
@@ -143,18 +136,45 @@ export function SignIn() {
               />
               <button
                 type="button"
-                className={`btn shrink-0 ${SUPABASE_ENABLED ? '' : 'btn--primary'}`}
+                className="btn btn--primary shrink-0"
                 onClick={() => void handleGuest()}
-                disabled={busy}
+                disabled={busy || !captchaReady}
               >
                 Entrar
               </button>
             </div>
             <p className="mt-2 text-[11px] text-[var(--color-ink-faint)]">
-              Solo para desarrollo: pide un token al backend en modo development.
+              Sin correo. Conservas el asiento en este dispositivo hasta que cierres sesión.
             </p>
-          </div>
-        ) : null}
+
+            <form onSubmit={handleMagicLink} className="scanline-top mt-6 pt-6">
+              <label className="hud-sub mb-2 block" htmlFor="email">
+                O entra con correo
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  className="field field--text"
+                  placeholder="piloto@ejemplo.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+                <button
+                  type="submit"
+                  className="btn shrink-0"
+                  disabled={busy || !captchaReady}
+                >
+                  Enviar
+                </button>
+              </div>
+            </form>
+
+            <TurnstileField onToken={setCaptchaToken} />
+          </>
+        )}
 
         {error ? (
           <p className="mt-4 border border-[rgba(244,63,94,0.4)] bg-[rgba(244,63,94,0.08)] px-3 py-2 text-xs text-[#fda4af]">

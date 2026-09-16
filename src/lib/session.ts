@@ -1,23 +1,24 @@
 /**
  * Sesión del jugador.
  *
- * Dos vías, con la misma interfaz para el resto de la app:
+ * Una sola fuente de identidad: el JWT de Supabase Auth (`sub`).
  *
- *   supabase  Supabase Auth (magic link). Es la de producción.
- *   dev       JWT emitido por POST /v1/dev/token del backend, que solo existe
- *             con APP_ENV=development. Permite trabajar en el juego sin montar
- *             Supabase todavía.
+ *   correo     magic link (producción y cuentas permanentes)
+ *   invitado   signInAnonymously() — mismo rol `authenticated`, claim
+ *              is_anonymous. El alias es solo presentación.
  *
- * Todo lo demás (REST y WebSocket) consume `getAccessToken()` sin saber de
- * dónde sale el token.
+ * REST y WebSocket consumen `getAccessToken()` sin saber cómo se obtuvo.
  */
 
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { SupabaseClient, User } from '@supabase/supabase-js';
 
-import { DEV_AUTH_ENABLED, SUPABASE_ANON_KEY, SUPABASE_ENABLED, SUPABASE_URL } from './config';
-import { RealtimeApi } from './api';
+import {
+  SUPABASE_ENABLED,
+  SUPABASE_PUBLISHABLE_KEY,
+  SUPABASE_URL,
+} from './config';
 
-export type IdentityKind = 'supabase' | 'dev';
+export type IdentityKind = 'supabase' | 'anonymous';
 
 export interface Identity {
   userId: string;
@@ -25,29 +26,18 @@ export interface Identity {
   kind: IdentityKind;
 }
 
-const DEV_STORAGE_KEY = 'cb:dev-session';
-/** Margen para renovar antes de que el token caduque de verdad. */
-const REFRESH_MARGIN_MS = 60_000;
-
-interface DevSession {
-  userId: string;
-  token: string;
-  expiresAt: number;
-  label: string;
-}
-
-// --- Supabase ----------------------------------------------------------------
+const CALLSIGN_KEY = 'cb:callsign';
 
 let supabasePromise: Promise<SupabaseClient> | null = null;
 
 /** Carga el cliente de Supabase solo si de verdad se va a usar. */
-async function supabase(): Promise<SupabaseClient> {
+export async function supabase(): Promise<SupabaseClient> {
   if (!SUPABASE_ENABLED) {
-    throw new Error('Supabase no está configurado (PUBLIC_SUPABASE_URL / PUBLIC_SUPABASE_ANON_KEY).');
+    throw new Error('Supabase no está configurado (PUBLIC_SUPABASE_URL / PUBLIC_SUPABASE_PUBLISHABLE_KEY).');
   }
   if (!supabasePromise) {
     supabasePromise = import('@supabase/supabase-js').then(({ createClient }) =>
-      createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
         auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
       }),
     );
@@ -55,52 +45,35 @@ async function supabase(): Promise<SupabaseClient> {
   return supabasePromise;
 }
 
-// --- almacenamiento de la sesión de desarrollo -------------------------------
-
-function readDevSession(): DevSession | null {
+function readCallsign(): string | null {
   if (typeof localStorage === 'undefined') return null;
   try {
-    const raw = localStorage.getItem(DEV_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as DevSession;
-    if (!parsed?.token || !parsed?.userId) return null;
-    return parsed;
+    return localStorage.getItem(CALLSIGN_KEY);
   } catch {
     return null;
   }
 }
 
-function writeDevSession(session: DevSession | null): void {
+function writeCallsign(label: string | null): void {
   if (typeof localStorage === 'undefined') return;
   try {
-    if (session) localStorage.setItem(DEV_STORAGE_KEY, JSON.stringify(session));
-    else localStorage.removeItem(DEV_STORAGE_KEY);
+    if (label) localStorage.setItem(CALLSIGN_KEY, label);
+    else localStorage.removeItem(CALLSIGN_KEY);
   } catch {
-    // Modo incógnito: la sesión durará solo lo que dure la pestaña.
+    // Modo incógnito: el alias dura lo que dure la pestaña.
   }
 }
 
-// --- API pública -------------------------------------------------------------
+function identityFromUser(user: User): Identity {
+  const kind: IdentityKind = user.is_anonymous ? 'anonymous' : 'supabase';
+  const stored = readCallsign()?.trim();
+  const email = user.email?.trim();
+  const label = stored || email || defaultCallsign(user.id);
+  return { userId: user.id, label, kind };
+}
 
-/**
- * Devuelve un access token válido, renovándolo si hace falta.
- *
- * Es la función que se pasa al cliente REST y al WebSocket; se llama en cada
- * conexión y en cada renovación.
- */
+/** Access token vigente, o null si no hay sesión. */
 export async function getAccessToken(): Promise<string | null> {
-  const dev = readDevSession();
-  if (dev) {
-    if (dev.expiresAt - Date.now() > REFRESH_MARGIN_MS) return dev.token;
-    // Token de desarrollo a punto de caducar: se pide otro para el mismo id.
-    try {
-      const refreshed = await devSignIn(dev.label, dev.userId);
-      return refreshed.token;
-    } catch {
-      return dev.token; // que falle arriba con un error claro
-    }
-  }
-
   if (!SUPABASE_ENABLED) return null;
   const client = await supabase();
   const { data } = await client.auth.getSession();
@@ -109,65 +82,65 @@ export async function getAccessToken(): Promise<string | null> {
 
 /** Identidad actual, o null si no hay sesión. */
 export async function getIdentity(): Promise<Identity | null> {
-  const dev = readDevSession();
-  if (dev) return { userId: dev.userId, label: dev.label, kind: 'dev' };
-
   if (!SUPABASE_ENABLED) return null;
   const client = await supabase();
   const { data } = await client.auth.getUser();
   if (!data.user) return null;
-  return {
-    userId: data.user.id,
-    label: data.user.email ?? 'Piloto',
-    kind: 'supabase',
-  };
+  return identityFromUser(data.user);
+}
+
+export interface SignInOptions {
+  captchaToken?: string;
 }
 
 /** Envía un magic link de Supabase al correo indicado. */
-export async function signInWithEmail(email: string, redirectTo?: string): Promise<void> {
+export async function signInWithEmail(
+  email: string,
+  redirectTo?: string,
+  options: SignInOptions = {},
+): Promise<void> {
   const client = await supabase();
   const { error } = await client.auth.signInWithOtp({
     email,
     options: {
       emailRedirectTo:
         redirectTo ?? (typeof window !== 'undefined' ? `${window.location.origin}/lobby/` : undefined),
+      captchaToken: options.captchaToken,
     },
   });
   if (error) throw new Error(error.message);
 }
 
 /**
- * Entra como invitado pidiendo un JWT al backend.
- *
- * Solo funciona con el backend en modo desarrollo. Reutiliza el userId anterior
- * si existe, para que al recargar sigas siendo el mismo jugador de la sala.
+ * Entra como invitado. Si ya hay sesión (anónima o permanente), la reutiliza
+ * para no crear usuarios de más en Auth.
  */
-export async function devSignIn(label?: string, userId?: string): Promise<Identity & { token: string }> {
-  if (!DEV_AUTH_ENABLED) {
-    throw new Error('El modo invitado está desactivado (PUBLIC_DEV_AUTH).');
+export async function signInAsGuest(
+  label?: string,
+  options: SignInOptions = {},
+): Promise<Identity> {
+  if (!SUPABASE_ENABLED) {
+    throw new Error('Supabase no está configurado: no se puede entrar como invitado.');
   }
 
-  const previous = readDevSession();
-  const api = new RealtimeApi(async () => null);
-  const issued = await api.devToken(userId ?? previous?.userId);
+  const trimmed = label?.trim();
+  if (trimmed) writeCallsign(trimmed);
 
-  const session: DevSession = {
-    userId: issued.userId,
-    token: issued.token,
-    expiresAt: new Date(issued.expiresAt).getTime(),
-    label: label ?? previous?.label ?? defaultCallsign(issued.userId),
-  };
-  writeDevSession(session);
+  const client = await supabase();
+  const existing = await client.auth.getUser();
+  if (existing.data.user) return identityFromUser(existing.data.user);
 
-  return { userId: session.userId, label: session.label, kind: 'dev', token: session.token };
+  const { data, error } = await client.auth.signInAnonymously({
+    options: { captchaToken: options.captchaToken },
+  });
+  if (error) throw new Error(error.message);
+  if (!data.user) throw new Error('Supabase no devolvió un usuario anónimo.');
+  return identityFromUser(data.user);
 }
 
-/** Cierra la sesión activa, sea del tipo que sea. */
+/** Cierra la sesión activa. */
 export async function signOut(): Promise<void> {
-  if (readDevSession()) {
-    writeDevSession(null);
-    return;
-  }
+  writeCallsign(null);
   if (!SUPABASE_ENABLED) return;
   const client = await supabase();
   await client.auth.signOut();

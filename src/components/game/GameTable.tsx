@@ -26,6 +26,8 @@ import { useGameRoom } from '../../hooks/useGameRoom';
 import { usePrivateDeck } from '../../hooks/usePrivateDeck';
 import { useSession } from '../../hooks/useSession';
 import { PHASES, type CardInstance, type ZoneId } from '../../lib/game/types';
+import { loginPath } from '../../lib/navigation';
+import { roomPath } from '../../lib/config';
 import { shortName } from '../../lib/session';
 
 /** Zonas a las que se puede llevar una carta desde la mano. */
@@ -48,10 +50,12 @@ export function GameTable() {
   const [selection, setSelection] = useState<Selection>(null);
   const [handCollapsed, setHandCollapsed] = useState(false);
 
-  // Sin sesión no hay sala: se vuelve al acceso.
+  // Sin sesión no hay sala: se vuelve al acceso conservando el código.
   useEffect(() => {
-    if (!sessionLoading && !identity) window.location.href = '/';
-  }, [sessionLoading, identity]);
+    if (sessionLoading || identity) return;
+    const next = code ? roomPath(code) : null;
+    window.location.href = loginPath(next);
+  }, [sessionLoading, identity, code]);
 
   // Si la carta seleccionada desaparece del tablero (la movió el rival, o se
   // fue al Vacío), se cierra el inspector en vez de dejarlo con datos viejos.

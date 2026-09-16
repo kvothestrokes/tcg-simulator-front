@@ -15,7 +15,7 @@ servidor ni aquí.
 ```
   Navegador                        Servicio Go                 Supabase
   ─────────                        ───────────                 ────────
-  Supabase Auth ───── JWT ───────▶ verificación HS256
+  Supabase Auth ───── JWT ───────▶ verificación JWKS / HS256
   REST          ─── crear/unir ──▶ /v1/rooms…          ──SQL──▶ rooms
   WebSocket     ─── declarar ────▶ orden + persistencia ──────▶ game_events
                 ◀── eventos ─────
@@ -62,11 +62,15 @@ cp .env.example .env
 |---|---|
 | `PUBLIC_REALTIME_URL` | URL del servicio Go (`http://localhost:8080` en local) |
 | `PUBLIC_SUPABASE_URL` | proyecto de Supabase |
-| `PUBLIC_SUPABASE_ANON_KEY` | clave anónima — **solo esta llega al navegador** |
-| `PUBLIC_DEV_AUTH` | `true` habilita «entrar como invitado» |
+| `PUBLIC_SUPABASE_PUBLISHABLE_KEY` | clave pública (o `PUBLIC_SUPABASE_ANON_KEY` si aún no rotaste) |
+| `PUBLIC_TURNSTILE_SITE_KEY` | Cloudflare Turnstile; vacío solo en local |
 
 El JWT secret, la service role key y la `DATABASE_URL` **no** van aquí: viven
 únicamente en el servicio Go.
+
+En el dashboard de Supabase: activa **Anonymous Sign-Ins**, configura el
+redirect del magic link a tu origen y, en producción, CAPTCHA (Turnstile) sobre
+sign-in anónimo.
 
 ### 2. Arrancar
 
@@ -75,21 +79,15 @@ npm install
 npm run dev     # http://localhost:4321
 ```
 
-### 3. Jugar sin montar Supabase
+### 3. Jugar con un clic
 
-Con el backend en modo desarrollo:
+1. Entra como invitado (sin correo).
+2. Crea una sala y comparte `/room/?code=…`.
+3. El rival abre el enlace: si no tiene sesión, vuelve a `/` con `next` y, tras
+   un clic, aterriza en esa mesa.
 
-```sh
-# en el repo del backend
-STORE_DRIVER=memory APP_ENV=development \
-SUPABASE_JWT_SECRET=un-secreto-de-al-menos-32-caracteres-para-dev \
-go run ./cmd/server
-```
-
-y `PUBLIC_DEV_AUTH=true` aquí. La pantalla de acceso ofrecerá «entrar como
-invitado»: pide un JWT a `POST /v1/dev/token`, que solo existe con
-`APP_ENV=development`. Abre dos navegadores (o una ventana de incógnito) para
-jugar contra ti mismo.
+El backend puede usar `STORE_DRIVER=memory` en desarrollo; las partidas se
+pierden al reiniciar. No hay `POST /v1/dev/token`.
 
 ---
 
@@ -97,7 +95,7 @@ jugar contra ti mismo.
 
 | Ruta | Qué es |
 |---|---|
-| `/` | acceso: magic link de Supabase o invitado |
+| `/` | acceso: invitado (un clic) o magic link |
 | `/lobby/` | hangar: crear sala, entrar por código, partidas recientes |
 | `/room/?code=ABC123` | la mesa |
 
@@ -110,7 +108,7 @@ necesita servidor. Si prefieres `/room/ABC123`, instala `@astrojs/vercel`, pon
 
 ## Endpoints que se usan
 
-Los seis del backend, sin dejarse ninguno:
+El cliente consume exactamente estas rutas del servicio Go:
 
 | Endpoint | Dónde |
 |---|---|
@@ -120,7 +118,8 @@ Los seis del backend, sin dejarse ninguno:
 | `POST /v1/rooms/{code}/join` | entrar (también al abrir la mesa: es idempotente) |
 | `POST /v1/rooms/{code}/finish` | botón «Terminar» |
 | `WS /v1/ws/rooms/{code}` | toda la partida |
-| `POST /v1/dev/token` | solo con `PUBLIC_DEV_AUTH=true` y backend en desarrollo |
+
+La sesión no pasa por el backend: la emite Supabase Auth.
 
 ---
 
@@ -172,13 +171,14 @@ src/
     game/           GameTable, PlayerBoard, Zone, CardTile, HeatGauge,
                     Hand, CardInspector, SidePanel, TopBar
   hooks/
-    useSession      identidad (Supabase o invitado)
+    useSession      identidad (Supabase: correo o anónimo)
     useGameRoom     REST + WebSocket + motor de estado
     usePrivateDeck  mano y mazo (privados, en local)
   lib/
     config          variables PUBLIC_*
     api             cliente REST de los endpoints del backend
-    session         tokens: Supabase Auth o /v1/dev/token
+    session         tokens de Supabase Auth
+    navigation      next interno (anti open-redirect)
     realtime/       protocolo y cliente WebSocket
     game/           types · cards · events · state (el motor)
   styles/global.css sistema de diseño (paneles biselados, zonas punteadas…)
@@ -198,7 +198,8 @@ componente cambia, porque todos conocen solo el tipo `CardDef`.
 ## Comprobaciones
 
 ```sh
-npm run check   # astro check: 0 errores
+npm run check   # astro check
+npm run test    # vitest
 npm run build   # salida estática en dist/
 ```
 
@@ -225,13 +226,10 @@ ALLOWED_ORIGINS=https://tuapp.vercel.app,https://tudominio.com
 
 Sin eso, el handshake del WebSocket se rechaza por origen — y es intencional.
 
-Y desactiva el modo invitado en producción:
+Define las variables `PUBLIC_*` en el proyecto. En producción configura
+Turnstile y **no** pongas secretos del backend en Vercel.
 
-```ini
-PUBLIC_DEV_AUTH=false
-```
-
-(aunque lo dejaras activado, `/v1/dev/token` no existe con `APP_ENV=production`).
+El invitado de un clic es el mismo flujo de producción (Anonymous Sign-Ins).
 
 ---
 
