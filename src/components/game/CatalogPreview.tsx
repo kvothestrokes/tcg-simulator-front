@@ -1,5 +1,6 @@
 import { CardTile } from './CardTile';
 import { CardInspector } from './CardInspector';
+import { CardViewerModal } from './CardViewerModal';
 import { SAMPLE_CATALOG } from '../../lib/game/cards';
 import { useState } from 'react';
 import type { CardDef } from '../../lib/game/types';
@@ -9,6 +10,7 @@ import type { CardDef } from '../../lib/game/types';
  */
 export function CatalogPreview() {
   const [selected, setSelected] = useState<CardDef>(SAMPLE_CATALOG[0]!);
+  const [viewerOpen, setViewerOpen] = useState(false);
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-6xl flex-col gap-6 p-6">
@@ -22,7 +24,7 @@ export function CatalogPreview() {
           <CardTile
             key={card.id}
             def={card}
-            width={card.tipo === 'Estación' ? 280 : 160}
+            width={card.tipo === 'Estación' ? 320 : 200}
             selected={selected.id === card.id}
             onClick={() => setSelected(card)}
           />
@@ -33,6 +35,7 @@ export function CatalogPreview() {
         <CardInspector
           selection={{ kind: 'hand', card: { uid: selected.id, def: selected } }}
           onClose={() => setSelected(SAMPLE_CATALOG[0]!)}
+          onEnlarge={() => setViewerOpen(true)}
           onPlay={() => undefined}
           onMove={() => undefined}
           onTap={() => undefined}
@@ -43,6 +46,10 @@ export function CatalogPreview() {
           onDiscardFromHand={() => undefined}
         />
       </div>
+
+      {viewerOpen ? (
+        <CardViewerModal def={selected} onClose={() => setViewerOpen(false)} />
+      ) : null}
     </main>
   );
 }

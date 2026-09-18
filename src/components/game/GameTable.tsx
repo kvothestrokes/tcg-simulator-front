@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { CardInspector, type Selection } from './CardInspector';
+import { CardViewerModal } from './CardViewerModal';
 import { Hand } from './Hand';
 import { PlayerBoard } from './PlayerBoard';
 import { SidePanel } from './SidePanel';
@@ -49,6 +50,7 @@ export function GameTable() {
 
   const [selection, setSelection] = useState<Selection>(null);
   const [handCollapsed, setHandCollapsed] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
 
   // Sin sesión no hay sala: se vuelve al acceso conservando el código.
   useEffect(() => {
@@ -62,8 +64,10 @@ export function GameTable() {
   useEffect(() => {
     if (selection?.kind !== 'board') return;
     const stillThere = me?.cards[selection.card.uid] ?? opponent?.cards[selection.card.uid];
-    if (!stillThere) setSelection(null);
-    else if (stillThere !== selection.card) {
+    if (!stillThere) {
+      setSelection(null);
+      setViewerOpen(false);
+    } else if (stillThere !== selection.card) {
       setSelection({ kind: 'board', card: stillThere, owned: selection.owned });
     }
   }, [me?.cards, opponent?.cards, selection]);
@@ -242,11 +246,11 @@ export function GameTable() {
 
       {/*
         La mesa necesita ancho: dos tableros completos más la columna lateral.
-        Por debajo de ~1180 px se hace scroll horizontal en vez de apilar las
+        Por debajo de ~1480 px se hace scroll horizontal en vez de apilar las
         zonas, porque un tablero de cartas apilado en una columna deja de
         parecerse a una mesa y se vuelve imposible de leer de un vistazo.
       */}
-      <div className="flex min-h-0 min-w-[1180px] flex-1">
+      <div className="flex min-h-0 min-w-[1480px] flex-1">
         {/* --- los dos tableros ------------------------------------------- */}
         <div className="flex min-h-0 flex-1 flex-col gap-1.5 p-2">
           <PlayerBoard
@@ -254,7 +258,7 @@ export function GameTable() {
             label={opponent ? nameFor(opponent.userId) : 'Esperando rival…'}
             isOwner={false}
             mirrored
-            cardWidth={62}
+            cardWidth={88}
             active={!!opponent && state.activePlayerId === opponent.userId}
             selectedUid={selection?.kind === 'board' ? selection.card.uid : undefined}
             onSelectCard={(card) => setSelection({ kind: 'board', card, owned: false })}
@@ -284,7 +288,7 @@ export function GameTable() {
             label={identity?.label ?? 'Tú'}
             isOwner
             mirrored={false}
-            cardWidth={78}
+            cardWidth={108}
             active={isMyTurn}
             selectedUid={selection?.kind === 'board' ? selection.card.uid : undefined}
             targetZones={targetZones}
@@ -298,7 +302,7 @@ export function GameTable() {
         </div>
 
         {/* --- columna lateral -------------------------------------------- */}
-        <aside className="flex min-h-0 w-[280px] shrink-0 flex-col gap-1.5 p-2 pl-0">
+        <aside className="flex min-h-0 w-[360px] shrink-0 flex-col gap-1.5 overflow-y-auto p-2 pl-0">
           <Panel cut={10} className="shrink-0" innerClassName="p-2.5">
             <h3 className="hud-title mb-2 text-[11px]">Mazo</h3>
             {!deckReady ? (
@@ -353,7 +357,11 @@ export function GameTable() {
 
           <CardInspector
             selection={selection}
-            onClose={() => setSelection(null)}
+            onClose={() => {
+              setSelection(null);
+              setViewerOpen(false);
+            }}
+            onEnlarge={() => setViewerOpen(true)}
             onPlay={(to, options) => {
               if (selection?.kind === 'hand') playFromHand(selection.card.uid, to, options);
             }}
@@ -405,10 +413,18 @@ export function GameTable() {
         cards={deck.hand}
         selectedUid={selection?.kind === 'hand' ? selection.card.uid : undefined}
         onSelect={(card) => setSelection({ kind: 'hand', card })}
-        cardWidth={72}
+        cardWidth={104}
         collapsed={handCollapsed}
         onToggle={() => setHandCollapsed((value) => !value)}
       />
+
+      {viewerOpen && selection ? (
+        <CardViewerModal
+          def={selection.kind === 'hand' ? selection.card.def : selection.card.def}
+          instance={selection.kind === 'board' ? selection.card : undefined}
+          onClose={() => setViewerOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

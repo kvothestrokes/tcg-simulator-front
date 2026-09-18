@@ -70,12 +70,15 @@ export function PlayerBoard({
 
   const isTarget = (zone: ZoneId) => targetZones.includes(zone);
 
+  const tileWidth = (tipo: CardInstance['def']['tipo']) =>
+    tipo === 'Estación' ? Math.round(cardWidth * 2.15) : cardWidth;
+
   const renderCard = (card: CardInstance) => (
     <CardTile
       key={card.uid}
       def={card.def}
       instance={card}
-      width={cardWidth}
+      width={tileWidth(card.def.tipo)}
       selected={selectedUid === card.uid}
       draggable={isOwner}
       onClick={() => onSelectCard(card)}
@@ -120,7 +123,7 @@ export function PlayerBoard({
 
       <div
         className="grid min-h-0 flex-1 gap-1.5"
-        style={{ gridTemplateColumns: '180px minmax(0, 1fr) 150px', gridTemplateRows: rows }}
+        style={{ gridTemplateColumns: '240px minmax(0, 1fr) 180px', gridTemplateRows: rows }}
       >
         {/* --- ESTACIÓN ESPACIAL ------------------------------------------- */}
         <PanelSection
@@ -138,7 +141,7 @@ export function PlayerBoard({
             highlighted={isTarget('station')}
             onDropCard={onDropCard}
             onClick={() => onZoneClick('station')}
-            className="flex h-full flex-wrap content-start gap-1 p-1.5"
+            className="flex h-full flex-wrap content-start gap-1.5 overflow-auto p-1.5"
             emptyHint={zoneCards('station').length === 0 ? 'Área de estación' : undefined}
           >
             {zoneCards('station').map(renderCard)}
@@ -161,7 +164,7 @@ export function PlayerBoard({
             highlighted={isTarget('battle')}
             onDropCard={onDropCard}
             onClick={() => onZoneClick('battle')}
-            className="flex h-full flex-wrap content-start gap-1.5 p-2"
+            className="flex h-full flex-wrap content-start gap-2 overflow-auto p-2"
             emptyHint={zoneCards('battle').length === 0 ? 'Área de batalla' : undefined}
           >
             {zoneCards('battle').map(renderCard)}
@@ -191,7 +194,7 @@ export function PlayerBoard({
                 <CardTile
                   def={topOfVoid.def}
                   instance={topOfVoid}
-                  width={Math.min(cardWidth * 1.1, 74)}
+                  width={Math.min(cardWidth, 120)}
                   draggable={isOwner}
                   selected={selectedUid === topOfVoid.uid}
                   onClick={() => onSelectCard(topOfVoid)}
@@ -217,7 +220,7 @@ export function PlayerBoard({
           className="min-h-0"
           style={{ gridColumn: 1, gridRow: rowShort }}
         >
-          <div className="flex gap-1.5">
+          <div className="flex gap-1.5 overflow-x-auto">
             {Array.from({ length: PILOT_SLOTS }, (_, slot) => {
               const card = zoneCards('pilots').find((c) => c.slot === slot);
               return (

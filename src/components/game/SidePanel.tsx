@@ -56,7 +56,7 @@ export function SidePanel({
   };
 
   return (
-    <Panel cut={12} className="flex min-h-0 w-[260px] shrink-0" innerClassName="flex min-h-0 flex-col">
+    <Panel cut={12} className="flex min-h-0 min-h-[140px] w-full flex-1" innerClassName="flex min-h-0 flex-col">
       <header className="flex shrink-0 gap-1 px-2 pt-2">
         <TabButton active={tab === 'log'} onClick={() => setTab('log')}>
           Registro

@@ -32,6 +32,7 @@ export type Selection =
 interface CardInspectorProps {
   selection: Selection;
   onClose: () => void;
+  onEnlarge?: () => void;
   onPlay: (to: ZoneId, options?: { faceUp?: boolean; slot?: number }) => void;
   onMove: (to: ZoneId, options?: { slot?: number }) => void;
   onTap: (tapped: boolean) => void;
@@ -49,6 +50,7 @@ const COUNTER_KEYS = ['daño', 'escudo', 'marca'] as const;
 export function CardInspector({
   selection,
   onClose,
+  onEnlarge,
   onPlay,
   onMove,
   onTap,
@@ -73,31 +75,45 @@ export function CardInspector({
   const instance = selection.kind === 'board' ? selection.card : undefined;
   const editable = selection.kind === 'hand' || selection.owned;
   const theme = getFactionTheme(def.faccion);
-  const previewWidth = def.tipo === 'Estación' ? 120 : 72;
+  const previewWidth = def.tipo === 'Estación' ? 320 : 220;
 
   return (
-    <Panel cut={10} className="shrink-0" innerClassName="flex flex-col gap-3 p-3">
-      <header className="flex items-start gap-3">
-        <CardTile def={def} instance={instance} width={previewWidth} />
-        <div className="min-w-0 flex-1">
-          <h3 className="hud-title text-xs leading-tight">{def.nombre}</h3>
-          <p className="hud-sub mt-1 text-[9px]" style={{ color: theme.primary }}>
-            {def.faccion}
-          </p>
-          <p className="hud-sub mt-0.5 text-[9px]">
-            {CARD_TYPE_LABEL[def.tipo]}
-            {def.tipo !== 'Estación' ? ` · Coste ${def.coste_recursos}` : ''}
-            {def.tipo === 'Nave' ? ` · ${def.ataque ?? 0}/${def.escudo ?? 0}` : ''}
-          </p>
+    <Panel cut={10} className="min-h-0 min-h-[280px] flex-[1.6]" innerClassName="flex flex-col gap-3 overflow-y-auto p-3">
+      <header className="flex flex-col gap-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h3 className="hud-title text-xs leading-tight">{def.nombre}</h3>
+            <p className="hud-sub mt-1 text-[9px]" style={{ color: theme.primary }}>
+              {def.faccion}
+            </p>
+            <p className="hud-sub mt-0.5 text-[9px]">
+              {CARD_TYPE_LABEL[def.tipo]}
+              {def.tipo !== 'Estación' ? ` · Coste ${def.coste_recursos}` : ''}
+              {def.tipo === 'Nave' ? ` · ${def.ataque ?? 0}/${def.escudo ?? 0}` : ''}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="step shrink-0"
+            onClick={onClose}
+            aria-label="Cerrar inspector"
+          >
+            ×
+          </button>
         </div>
-        <button
-          type="button"
-          className="step shrink-0"
-          onClick={onClose}
-          aria-label="Cerrar inspector"
-        >
-          ×
-        </button>
+        <div className="mx-auto">
+          <CardTile
+            def={def}
+            instance={instance}
+            width={previewWidth}
+            onClick={onEnlarge}
+          />
+        </div>
+        {onEnlarge ? (
+          <button type="button" className="btn btn--sm w-full" onClick={onEnlarge}>
+            Ver grande
+          </button>
+        ) : null}
       </header>
 
       <TypeFacts def={def} />
