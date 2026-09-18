@@ -55,6 +55,8 @@ export const ServerEventType = {
 export interface SetupData {
   deckCount: number;
   deckName?: string;
+  /** Estación inicial revelada en zona pública; no cuenta como carta del mazo. */
+  station?: CardDef;
 }
 
 export interface DrawData {

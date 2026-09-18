@@ -32,46 +32,76 @@ export const ZONE_LABEL: Record<ZoneId, string> = {
   hand: 'Mano',
 };
 
-export type CardType = 'nave' | 'piloto' | 'modulo' | 'tactica';
+export type CardType = 'Nave' | 'Orden' | 'Piloto' | 'Gear' | 'Estación';
 
-export const CARD_TYPE_LABEL: Record<CardType, string> = {
-  nave: 'Nave',
-  piloto: 'Piloto',
-  modulo: 'Módulo',
-  tactica: 'Táctica',
-};
+export type FactionId =
+  | 'Imperio Galáctico'
+  | 'Piratas'
+  | 'Xeno'
+  | 'CyberPunk'
+  | 'IA'
+  | 'SteamPunk'
+  | 'Neutral';
 
-export type FactionId = 'orion' | 'vega' | 'kepler' | 'nomada';
-
-export interface Faction {
+export interface FactionTheme {
   id: FactionId;
-  name: string;
-  /** Color de la franja lateral de la carta. */
-  color: string;
+  short: string;
+  primary: string;
+  accent: string;
+  ink: string;
+  border: string;
+  glow: string;
+  bgFrom: string;
+  bgTo: string;
+  artFrom: string;
+  artTo: string;
+  pattern: 'grid' | 'scan' | 'organic' | 'neon' | 'geometric' | 'gears' | 'stars';
 }
 
-export const FACTIONS: Record<FactionId, Faction> = {
-  orion: { id: 'orion', name: 'Consorcio Orión', color: '#67e8f9' },
-  vega: { id: 'vega', name: 'Flota Vega', color: '#fb923c' },
-  kepler: { id: 'kepler', name: 'Cónclave Kepler', color: '#c084fc' },
-  nomada: { id: 'nomada', name: 'Nómadas', color: '#4ade80' },
+export const CARD_TYPE_LABEL: Record<CardType, string> = {
+  Nave: 'Nave',
+  Orden: 'Orden',
+  Piloto: 'Piloto',
+  Gear: 'Gear',
+  Estación: 'Estación',
 };
 
-/** Definición de carta del catálogo. */
+/**
+ * Contrato compartido con Card Forger.
+ * `notas_diseno` es metadato interno: nunca se pinta en frame, inspector ni tooltips.
+ */
 export interface CardDef {
   id: string;
-  name: string;
-  type: CardType;
-  faction: FactionId;
-  cost: number;
-  /** Poder de ataque. Solo informativo: el servidor no calcula combate. */
-  power?: number;
-  /** Integridad / resistencia. También informativa. */
-  integrity?: number;
-  /** Calor que el jugador declara al usarla. Nadie lo aplica automáticamente. */
-  heat?: number;
-  text: string;
-  keywords?: string[];
+  nombre: string;
+  tipo: CardType;
+  faccion: string;
+  coste_recursos: number;
+  coste_heat: number;
+  rol?: string;
+  ataque?: number;
+  escudo?: number;
+  espacios_gear?: number;
+  chatarra_al_morir?: number;
+  palabras_clave?: string[];
+  texto_efecto?: string;
+  subtipo?: string;
+  momento_juego?: string;
+  requisito_enlace?: string;
+  bono_al_enlazar?: string;
+  bono_sin_enlazar?: string;
+  espacios_ocupa?: number;
+  restriccion_equipamiento?: string;
+  modificador_ataque?: number;
+  modificador_escudo?: number;
+  hp?: number;
+  hp_max?: number;
+  heat_actual?: number;
+  heat_umbral?: number;
+  rareza: string;
+  numero_coleccion: string;
+  autor: string;
+  artwork_url?: string;
+  notas_diseno?: string;
 }
 
 /**

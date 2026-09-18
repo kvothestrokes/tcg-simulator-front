@@ -1,5 +1,5 @@
 /**
- * Catálogo de ejemplo.
+ * Catálogo de ejemplo CyberPunk.
  *
  * Existe para que el simulador se pueda jugar hoy. Cuando tengas las cartas
  * reales (en Supabase o servidas por el backend), sustituye `loadCatalog` por
@@ -8,176 +8,96 @@
  */
 
 import type { CardDef } from './types';
+import { HEAT_THRESHOLD } from './types';
 
 export const SAMPLE_CATALOG: CardDef[] = [
   {
-    id: 'orn-001',
-    name: 'Corbeta Aguja',
-    type: 'nave',
-    faction: 'orion',
-    cost: 1,
-    power: 2,
-    integrity: 2,
-    heat: 1,
-    text: 'Puede atacar el turno en que se despliega.',
-    keywords: ['Rápida'],
+    id: 'cp_001',
+    nombre: 'Dron Desechable',
+    tipo: 'Nave',
+    rol: 'Caza',
+    faccion: 'CyberPunk',
+    coste_recursos: 1,
+    coste_heat: 0,
+    ataque: 10,
+    escudo: 10,
+    espacios_gear: 0,
+    palabras_clave: ['Reactor frío', 'Kamikaze'],
+    texto_efecto: 'Al ser destruida, genera 1 chatarra adicional.',
+    chatarra_al_morir: 2,
+    rareza: 'Común',
+    numero_coleccion: 'CP-001',
+    autor: '',
+    notas_diseno: 'Coste de Heat 0: permite turnos de muchas acciones. Motor de chatarra base.',
   },
   {
-    id: 'orn-002',
-    name: 'Crucero Meridiano',
-    type: 'nave',
-    faction: 'orion',
-    cost: 3,
-    power: 4,
-    integrity: 5,
-    heat: 2,
-    text: 'Mientras tenga un piloto asignado, ignora el primer daño de cada turno.',
-    keywords: ['Blindaje'],
+    id: 'cp_008',
+    nombre: 'Mercado Negro',
+    tipo: 'Orden',
+    subtipo: 'Instantánea',
+    faccion: 'CyberPunk',
+    coste_recursos: 1,
+    coste_heat: 1,
+    momento_juego: 'Tu turno',
+    palabras_clave: [],
+    texto_efecto:
+      'Busca en tu mazo 1 Nave de coste 2 o menos, añádela a tu mano y baraja. Generas 1 chatarra.',
+    rareza: 'Común',
+    numero_coleccion: 'CP-008',
+    autor: '',
+    notas_diseno: 'BUSCADOR/tutor barato. Arranca el motor cuando la mano es mala.',
   },
   {
-    id: 'orn-003',
-    name: 'Kira Solano',
-    type: 'piloto',
-    faction: 'orion',
-    cost: 2,
-    power: 1,
-    text: 'La nave que pilota gana +2 de poder.',
-    keywords: ['As'],
+    id: 'cp_012',
+    nombre: 'Kaze, Piloto de Desguace',
+    tipo: 'Piloto',
+    faccion: 'CyberPunk',
+    coste_recursos: 2,
+    coste_heat: 1,
+    requisito_enlace: 'Nave con rol Caza',
+    bono_al_enlazar: '+10 de Ataque y gana Ráfaga.',
+    bono_sin_enlazar: 'Tus Naves generan 1 chatarra adicional al ser destruidas.',
+    palabras_clave: [],
+    rareza: 'Rara',
+    numero_coleccion: 'CP-012',
+    autor: '',
+    notas_diseno: 'Flexible: agresivo enlazado, motor si no. Ráfaga premia el combate mutuo.',
   },
   {
-    id: 'orn-004',
-    name: 'Dique Seco Orbital',
-    type: 'modulo',
-    faction: 'orion',
-    cost: 2,
-    text: 'Al comienzo de tu turno, reduce tu calor en 1.',
-    keywords: ['Refrigeración'],
+    id: 'cp_014',
+    nombre: 'Blindaje Reciclado',
+    tipo: 'Gear',
+    faccion: 'CyberPunk',
+    coste_recursos: 1,
+    coste_heat: 0,
+    espacios_ocupa: 1,
+    restriccion_equipamiento: 'Cualquier Nave',
+    modificador_ataque: 0,
+    modificador_escudo: 20,
+    palabras_clave: ['Reactor frío'],
+    texto_efecto:
+      'La Nave equipada gana +20 de Escudo. Al ser destruido este Gear, generas 1 chatarra.',
+    rareza: 'Común',
+    numero_coleccion: 'CP-014',
+    autor: '',
+    notas_diseno: 'Sube un Caza de 10 a 30 de Escudo y sobrevive al combate mutuo.',
   },
   {
-    id: 'veg-001',
-    name: 'Cañonera Yunque',
-    type: 'nave',
-    faction: 'vega',
-    cost: 2,
-    power: 3,
-    integrity: 3,
-    heat: 2,
-    text: 'Al atacar, declara +1 de calor para golpear dos veces.',
-    keywords: ['Sobrecarga'],
-  },
-  {
-    id: 'veg-002',
-    name: 'Acorazado Fragua',
-    type: 'nave',
-    faction: 'vega',
-    cost: 5,
-    power: 7,
-    integrity: 7,
-    heat: 4,
-    text: 'No puede ser bloqueado por naves de coste 2 o menos.',
-    keywords: ['Imponente'],
-  },
-  {
-    id: 'veg-003',
-    name: 'Bruna Tejada',
-    type: 'piloto',
-    faction: 'vega',
-    cost: 3,
-    power: 2,
-    text: 'Su nave puede atacar aunque esté girada.',
-    keywords: ['Veterana'],
-  },
-  {
-    id: 'veg-004',
-    name: 'Descarga Térmica',
-    type: 'tactica',
-    faction: 'vega',
-    cost: 1,
-    text: 'Reduce tu calor en 3. Solo en tu turno.',
-    keywords: ['Instantánea'],
-  },
-  {
-    id: 'kep-001',
-    name: 'Sonda Espejo',
-    type: 'nave',
-    faction: 'kepler',
-    cost: 1,
-    power: 0,
-    integrity: 3,
-    text: 'Mientras esté en juego, mira la primera carta que robe tu rival.',
-    keywords: ['Vigía'],
-  },
-  {
-    id: 'kep-002',
-    name: 'Tejedora de Vacío',
-    type: 'nave',
-    faction: 'kepler',
-    cost: 4,
-    power: 3,
-    integrity: 4,
-    heat: 2,
-    text: 'Al desplegarse, devuelve una carta del Vacío a tu mano.',
-    keywords: ['Eco'],
-  },
-  {
-    id: 'kep-003',
-    name: 'Archivista Vel',
-    type: 'piloto',
-    faction: 'kepler',
-    cost: 2,
-    power: 1,
-    text: 'Cuando su nave sea destruida, roba una carta.',
-    keywords: ['Memoria'],
-  },
-  {
-    id: 'kep-004',
-    name: 'Colapso Gravitatorio',
-    type: 'tactica',
-    faction: 'kepler',
-    cost: 3,
-    text: 'Devuelve una nave desplegada a la mano de su dueño.',
-    keywords: ['Instantánea'],
-  },
-  {
-    id: 'nom-001',
-    name: 'Chatarrero Errante',
-    type: 'nave',
-    faction: 'nomada',
-    cost: 2,
-    power: 2,
-    integrity: 2,
-    heat: 1,
-    text: 'Cuando destruya una nave, gana 1 punto de recurso.',
-    keywords: ['Carroñero'],
-  },
-  {
-    id: 'nom-002',
-    name: 'Remolcador Ancla',
-    type: 'nave',
-    faction: 'nomada',
-    cost: 3,
-    power: 1,
-    integrity: 6,
-    text: 'Las naves rivales deben atacarla a ella si pueden.',
-    keywords: ['Provocación'],
-  },
-  {
-    id: 'nom-003',
-    name: 'Mercado Flotante',
-    type: 'modulo',
-    faction: 'nomada',
-    cost: 2,
-    text: 'Una vez por turno: descarta una carta para ganar 1 punto de recurso.',
-    keywords: ['Trueque'],
-  },
-  {
-    id: 'nom-004',
-    name: 'Ruta de Contrabando',
-    type: 'tactica',
-    faction: 'nomada',
-    cost: 1,
-    text: 'Roba dos cartas y descarta una.',
-    keywords: ['Instantánea'],
+    id: 'cp_stn_k9',
+    nombre: 'Estación Chatarrera K-9',
+    tipo: 'Estación',
+    rol: 'Base',
+    faccion: 'CyberPunk',
+    coste_recursos: 0,
+    coste_heat: 0,
+    hp: 20,
+    hp_max: 20,
+    heat_actual: 0,
+    heat_umbral: HEAT_THRESHOLD,
+    texto_efecto: 'Descarta 3 de chatarra para curar 1 a la estación.',
+    rareza: 'Común',
+    numero_coleccion: 'CP-STN',
+    autor: '',
   },
 ];
 
@@ -185,6 +105,22 @@ const CATALOG_BY_ID = new Map(SAMPLE_CATALOG.map((card) => [card.id, card]));
 
 export function findCard(id: string): CardDef | undefined {
   return CATALOG_BY_ID.get(id);
+}
+
+export function getStarterStation(): CardDef {
+  const station = SAMPLE_CATALOG.find((card) => card.tipo === 'Estación');
+  if (!station) throw new Error('El catálogo no define una estación inicial.');
+  return publicCardDef(station);
+}
+
+/** Quita metadatos que no deben viajar en eventos ni pintarse. */
+export function publicCardDef(def: CardDef): CardDef {
+  const { notas_diseno: _notes, ...rest } = def;
+  return rest;
+}
+
+export function playableCatalog(): CardDef[] {
+  return SAMPLE_CATALOG.filter((card) => card.tipo !== 'Estación');
 }
 
 /**
@@ -197,21 +133,18 @@ export async function loadCatalog(): Promise<CardDef[]> {
   return SAMPLE_CATALOG;
 }
 
-/** Mazo de ejemplo: 30 cartas, dos copias de cada definición salvo las caras. */
+/** Mazo de ejemplo: 30 cartas jugables, sin la estación (se coloca en SETUP). */
 export function buildStarterDeck(): string[] {
+  const playable = playableCatalog();
   const deck: string[] = [];
-  for (const card of SAMPLE_CATALOG) {
-    // Las cartas de coste alto van en menor cantidad; es un mazo de muestra,
-    // no una lista competitiva.
-    const copies = card.cost >= 4 ? 1 : 2;
-    for (let i = 0; i < copies; i++) deck.push(card.id);
-  }
-  // Se completa hasta 30 con las cartas baratas.
-  const cheap = SAMPLE_CATALOG.filter((c) => c.cost <= 2).map((c) => c.id);
   let i = 0;
-  while (deck.length < 30 && cheap.length > 0) {
-    deck.push(cheap[i % cheap.length]!);
+  while (deck.length < 30 && playable.length > 0) {
+    deck.push(playable[i % playable.length]!.id);
     i++;
   }
-  return deck.slice(0, 30);
+  return deck;
+}
+
+export function stationUid(ownerId: string): string {
+  return `station:${ownerId}`;
 }

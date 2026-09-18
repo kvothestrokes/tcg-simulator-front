@@ -42,6 +42,7 @@ import {
   type PlayerState,
   type ZoneId,
 } from './types';
+import { stationUid } from './cards';
 import type { WireEvent } from '../realtime/protocol';
 
 const MAX_LOG_ENTRIES = 300;
@@ -100,16 +101,37 @@ export function applyEvent(state: GameState, event: WireEvent): GameState {
     case GameEventType.Setup: {
       const d = data as unknown as SetupData;
       if (!actorId) break;
-      withPlayer(next, actorId, event.seat ?? 1, (p) => ({
-        ...p,
-        deckCount: clamp(d.deckCount ?? 0, 0, 999),
-        handCount: 0,
-        cards: {},
-        heat: 0,
-        resourcePoints: 0,
-        ready: true,
-      }));
-      pushLog(next, event, `${name(actorId)} preparó su mazo (${d.deckCount ?? 0} cartas).`);
+      withPlayer(next, actorId, event.seat ?? 1, (p) => {
+        const cards: Record<string, CardInstance> = {};
+        if (d.station) {
+          const uid = stationUid(actorId);
+          cards[uid] = {
+            uid,
+            def: d.station,
+            ownerId: actorId,
+            zone: 'station',
+            faceUp: true,
+            tapped: false,
+            counters: {},
+          };
+        }
+        return {
+          ...p,
+          deckCount: clamp(d.deckCount ?? 0, 0, 999),
+          handCount: 0,
+          cards,
+          heat: 0,
+          resourcePoints: 0,
+          ready: true,
+        };
+      });
+      pushLog(
+        next,
+        event,
+        d.station
+          ? `${name(actorId)} preparó su mazo (${d.deckCount ?? 0} cartas) y desplegó ${d.station.nombre}.`
+          : `${name(actorId)} preparó su mazo (${d.deckCount ?? 0} cartas).`,
+      );
       break;
     }
 
@@ -163,7 +185,7 @@ export function applyEvent(state: GameState, event: WireEvent): GameState {
         event,
         d.faceUp === false
           ? `${name(actorId)} colocó una carta boca abajo en ${ZONE_LABEL[d.to]}.`
-          : `${name(actorId)} jugó ${d.def.name} (${CARD_TYPE_LABEL[d.def.type]}) en ${ZONE_LABEL[d.to]}.`,
+          : `${name(actorId)} jugó ${d.def.nombre} (${CARD_TYPE_LABEL[d.def.tipo]}) en ${ZONE_LABEL[d.to]}.`,
       );
       break;
     }
@@ -379,7 +401,7 @@ function pushLog(
 }
 
 function cardName(card: CardInstance): string {
-  return card.faceUp ? card.def.name : 'una carta boca abajo';
+  return card.faceUp ? card.def.nombre : 'una carta boca abajo';
 }
 
 /** Nombre corto y estable a partir del id; la UI lo sustituye por el real. */

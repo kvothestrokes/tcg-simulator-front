@@ -1,0 +1,8 @@
+---
+import Base from '../../layouts/Base.astro';
+import { CatalogPreview } from '../../components/game/CatalogPreview';
+---
+
+<Base title="Catálogo de cartas" description="Vista de las cartas CyberPunk del simulador.">
+  <CatalogPreview client:only="react" />
+</Base>

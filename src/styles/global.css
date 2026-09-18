@@ -1,6 +1,7 @@
 @import 'tailwindcss';
 @import '@fontsource-variable/oxanium';
 @import '@fontsource-variable/inter';
+@import './card-frame.css';
 
 /* =============================================================================
    Sistema de diseño — HUD de Cosmic Breaker
@@ -307,20 +308,13 @@
   /* ---------------------------------------------------------------------------
      Carta
      ------------------------------------------------------------------------ */
-  .card {
+  .game-card {
     --cut: 7px;
     position: relative;
-    aspect-ratio: 5 / 7;
+    overflow: hidden;
+    border-radius: 8px;
     background: linear-gradient(160deg, var(--color-plate), #0b0d10);
     border: 1px solid var(--color-stroke-dim);
-    clip-path: polygon(
-      var(--cut) 0,
-      100% 0,
-      100% calc(100% - var(--cut)),
-      calc(100% - var(--cut)) 100%,
-      0 100%,
-      0 var(--cut)
-    );
     cursor: grab;
     user-select: none;
     transition:
@@ -329,26 +323,26 @@
       box-shadow 120ms ease;
   }
 
-  .card:hover {
+  .game-card:hover {
     border-color: var(--color-stroke);
     transform: translateY(-2px);
     z-index: 5;
   }
 
-  .card[data-selected='true'] {
+  .game-card[data-selected='true'] {
     border-color: var(--color-signal);
     box-shadow: 0 0 0 1px var(--color-signal);
   }
 
-  .card[data-tapped='true'] {
+  .game-card[data-tapped='true'] {
     transform: rotate(90deg) scale(0.86);
   }
 
-  .card[data-tapped='true']:hover {
+  .game-card[data-tapped='true']:hover {
     transform: rotate(90deg) scale(0.9);
   }
 
-  .card[data-facedown='true'] {
+  .game-card[data-facedown='true'] {
     background:
       repeating-linear-gradient(
         135deg,
@@ -358,15 +352,8 @@
       linear-gradient(160deg, #15181d, #0a0c0f);
   }
 
-  .card--dragging {
+  .game-card--dragging {
     opacity: 0.4;
-  }
-
-  /* Franja de facción en el borde izquierdo de la carta. */
-  .card__strip {
-    position: absolute;
-    inset: 0 auto 0 0;
-    width: 3px;
   }
 
   /* ---------------------------------------------------------------------------

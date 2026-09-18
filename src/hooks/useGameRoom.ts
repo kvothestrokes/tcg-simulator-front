@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, RealtimeApi, errorMessage, type PlayerView, type RoomView } from '../lib/api';
 import { GameEventType } from '../lib/game/events';
 import { applyEvent, applyPresence, seedPlayers } from '../lib/game/state';
+import { getStarterStation, publicCardDef } from '../lib/game/cards';
 import {
   emptyState,
   HEAT_MAX,
@@ -200,14 +201,18 @@ export function useGameRoom({ roomCode, userId, onEvent }: UseGameRoomOptions): 
   const actions = useMemo<GameActions>(
     () => ({
       setupDeck: (deckCount, deckName) =>
-        declare(GameEventType.Setup, { deckCount, deckName: deckName ?? 'Mazo inicial' }),
+        declare(GameEventType.Setup, {
+          deckCount,
+          deckName: deckName ?? 'Mazo inicial',
+          station: getStarterStation(),
+        }),
 
       draw: (count) => declare(GameEventType.Draw, { count }),
 
       shuffleDeck: (deckCount) => declare(GameEventType.Shuffle, { deckCount }),
 
       playCard: ({ uid, def, from, to, slot, faceUp = true }) =>
-        declare(GameEventType.Play, { uid, def, from, to, slot, faceUp }),
+        declare(GameEventType.Play, { uid, def: publicCardDef(def), from, to, slot, faceUp }),
 
       moveCard: ({ uid, from, to, slot, faceUp }) =>
         declare(GameEventType.Move, { uid, from, to, slot, faceUp }),

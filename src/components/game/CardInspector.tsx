@@ -12,11 +12,14 @@
 import { CardTile } from './CardTile';
 import { Panel } from '../ui/Panel';
 import type { PrivateCard } from '../../hooks/usePrivateDeck';
+import { formatGearModifiers } from '../../lib/card/getCardTypeFields';
+import { getFactionTheme } from '../../lib/card/getFactionTheme';
+import { stripKeywordMarkers } from '../../lib/card/extractKeywords';
 import {
   CARD_TYPE_LABEL,
-  FACTIONS,
   PILOT_SLOTS,
   ZONE_LABEL,
+  type CardDef,
   type CardInstance,
   type ZoneId,
 } from '../../lib/game/types';
@@ -69,20 +72,22 @@ export function CardInspector({
   const def = selection.kind === 'hand' ? selection.card.def : selection.card.def;
   const instance = selection.kind === 'board' ? selection.card : undefined;
   const editable = selection.kind === 'hand' || selection.owned;
-  const faction = FACTIONS[def.faction];
+  const theme = getFactionTheme(def.faccion);
+  const previewWidth = def.tipo === 'Estación' ? 120 : 72;
 
   return (
     <Panel cut={10} className="shrink-0" innerClassName="flex flex-col gap-3 p-3">
       <header className="flex items-start gap-3">
-        <CardTile def={def} instance={instance} width={64} />
+        <CardTile def={def} instance={instance} width={previewWidth} />
         <div className="min-w-0 flex-1">
-          <h3 className="hud-title text-xs leading-tight">{def.name}</h3>
-          <p className="hud-sub mt-1 text-[9px]" style={{ color: faction.color }}>
-            {faction.name}
+          <h3 className="hud-title text-xs leading-tight">{def.nombre}</h3>
+          <p className="hud-sub mt-1 text-[9px]" style={{ color: theme.primary }}>
+            {def.faccion}
           </p>
           <p className="hud-sub mt-0.5 text-[9px]">
-            {CARD_TYPE_LABEL[def.type]} · Coste {def.cost}
-            {def.power !== undefined ? ` · ${def.power}/${def.integrity ?? '—'}` : ''}
+            {CARD_TYPE_LABEL[def.tipo]}
+            {def.tipo !== 'Estación' ? ` · Coste ${def.coste_recursos}` : ''}
+            {def.tipo === 'Nave' ? ` · ${def.ataque ?? 0}/${def.escudo ?? 0}` : ''}
           </p>
         </div>
         <button
@@ -95,11 +100,17 @@ export function CardInspector({
         </button>
       </header>
 
-      <p className="text-[11px] leading-relaxed text-[var(--color-ink-dim)]">{def.text}</p>
+      <TypeFacts def={def} />
 
-      {def.keywords?.length ? (
+      {def.texto_efecto ? (
+        <p className="text-[11px] leading-relaxed text-[var(--color-ink-dim)]">
+          {stripKeywordMarkers(def.texto_efecto)}
+        </p>
+      ) : null}
+
+      {def.palabras_clave?.length ? (
         <div className="flex flex-wrap gap-1">
-          {def.keywords.map((keyword) => (
+          {def.palabras_clave.map((keyword) => (
             <span
               key={keyword}
               className="hud-sub border border-[var(--color-stroke-faint)] px-1.5 py-0.5 text-[9px]"
@@ -249,6 +260,64 @@ export function CardInspector({
         </>
       )}
     </Panel>
+  );
+}
+
+function TypeFacts({ def }: { def: CardDef }) {
+  const rows: { label: string; value: string }[] = [];
+
+  if (def.tipo !== 'Estación') {
+    rows.push({ label: 'Heat', value: String(def.coste_heat) });
+  }
+
+  if (def.tipo === 'Nave') {
+    if (def.rol) rows.push({ label: 'Rol', value: def.rol });
+    rows.push({ label: 'Ataque', value: String(def.ataque ?? 0) });
+    rows.push({ label: 'Escudo', value: String(def.escudo ?? 0) });
+    rows.push({ label: 'Gear', value: String(def.espacios_gear ?? 0) });
+    if (def.chatarra_al_morir) {
+      rows.push({ label: 'Chatarra al morir', value: String(def.chatarra_al_morir) });
+    }
+  }
+
+  if (def.tipo === 'Orden') {
+    if (def.subtipo) rows.push({ label: 'Subtipo', value: def.subtipo });
+    if (def.momento_juego) rows.push({ label: 'Momento', value: def.momento_juego });
+  }
+
+  if (def.tipo === 'Piloto') {
+    if (def.requisito_enlace) rows.push({ label: 'Enlace', value: def.requisito_enlace });
+    if (def.bono_al_enlazar) rows.push({ label: 'Enlazado', value: def.bono_al_enlazar });
+    if (def.bono_sin_enlazar) rows.push({ label: 'Sin enlazar', value: def.bono_sin_enlazar });
+  }
+
+  if (def.tipo === 'Gear') {
+    rows.push({ label: 'Ocupa', value: String(def.espacios_ocupa ?? 0) });
+    if (def.restriccion_equipamiento) {
+      rows.push({ label: 'Restricción', value: def.restriccion_equipamiento });
+    }
+    const mods = formatGearModifiers(def);
+    if (mods) rows.push({ label: 'Mods', value: mods });
+  }
+
+  if (def.tipo === 'Estación') {
+    if (def.rol) rows.push({ label: 'Rol', value: def.rol });
+    rows.push({ label: 'HP', value: `${def.hp ?? 0} / ${def.hp_max ?? 0}` });
+    rows.push({ label: 'Heat', value: `${def.heat_actual ?? 0} / ${def.heat_umbral ?? 0}` });
+  }
+
+  if (def.rareza) rows.push({ label: 'Rareza', value: def.rareza });
+  if (def.numero_coleccion) rows.push({ label: 'Colección', value: def.numero_coleccion });
+
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[10px] text-[var(--color-ink-dim)]">
+      {rows.map((row) => (
+        <div key={row.label} className="contents">
+          <dt className="hud-sub text-[8px]">{row.label}</dt>
+          <dd className="min-w-0 leading-tight">{row.value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
