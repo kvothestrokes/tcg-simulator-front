@@ -1,14 +1,17 @@
 /**
- * Catálogo de ejemplo CyberPunk.
+ * Card catalog — sample data and Supabase-backed loading.
  *
- * Existe para que el simulador se pueda jugar hoy. Cuando tengas las cartas
- * reales (en Supabase o servidas por el backend), sustituye `loadCatalog` por
- * la llamada correspondiente: es el único punto que hay que tocar, porque el
- * resto de la app solo conoce el tipo `CardDef`.
+ * SAMPLE_CATALOG is the offline fallback. When SUPABASE_ENABLED is true,
+ * loadCatalog fetches from the `cards` table and populates CATALOG_BY_ID.
+ *
+ * Call hydrateCatalog() once at app entry so CATALOG_BY_ID is never empty
+ * when the synchronous engine helpers (findCard, buildStarterDeck) run.
  */
 
 import type { CardDef } from './types';
 import { HEAT_THRESHOLD } from './types';
+import { SUPABASE_ENABLED } from '../config';
+import { cardRowToDef } from '../decks/mappers';
 
 export const SAMPLE_CATALOG: CardDef[] = [
   {
@@ -101,7 +104,9 @@ export const SAMPLE_CATALOG: CardDef[] = [
   },
 ];
 
-const CATALOG_BY_ID = new Map(SAMPLE_CATALOG.map((card) => [card.id, card]));
+// Mutable cache — populated from SAMPLE_CATALOG at module load;
+// replaced by DB rows after hydrateCatalog() resolves.
+const CATALOG_BY_ID = new Map<string, CardDef>(SAMPLE_CATALOG.map((card) => [card.id, card]));
 
 export function findCard(id: string): CardDef | undefined {
   return CATALOG_BY_ID.get(id);
@@ -124,13 +129,59 @@ export function playableCatalog(): CardDef[] {
 }
 
 /**
- * Punto único de integración con las cartas reales.
+ * Load the card catalog.
  *
- * Hoy devuelve el catálogo de ejemplo. Para conectar Supabase, cambia el cuerpo
- * por la consulta y deja la firma igual: ningún componente cambia.
+ * When SUPABASE_ENABLED is true, fetches from the `cards` table and populates
+ * CATALOG_BY_ID. On error or when disabled, falls back to SAMPLE_CATALOG.
+ *
+ * This is the single integration seam — no other file needs to change when
+ * the data source changes.
  */
 export async function loadCatalog(): Promise<CardDef[]> {
-  return SAMPLE_CATALOG;
+  if (!SUPABASE_ENABLED) {
+    return SAMPLE_CATALOG;
+  }
+
+  try {
+    const { supabase } = await import('../session');
+    const client = await supabase();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data, error } = await (client.from('cards') as any).select('*') as {
+      data: unknown[] | null;
+      error: unknown;
+    };
+
+    if (error || !data || data.length === 0) {
+      return SAMPLE_CATALOG;
+    }
+
+    const defs = (data as Parameters<typeof cardRowToDef>[0][]).map(cardRowToDef);
+
+    // Populate the synchronous cache
+    CATALOG_BY_ID.clear();
+    for (const def of defs) {
+      CATALOG_BY_ID.set(def.id, def);
+    }
+
+    return defs;
+  } catch {
+    return SAMPLE_CATALOG;
+  }
+}
+
+let hydrated = false;
+
+/**
+ * Hydrate CATALOG_BY_ID from the DB exactly once.
+ *
+ * Call this at app entry (e.g., DecksPanel mount) so findCard() and
+ * buildStarterDeck() never operate on an empty cache.
+ * Subsequent calls are no-ops.
+ */
+export async function hydrateCatalog(): Promise<void> {
+  if (hydrated) return;
+  hydrated = true;
+  await loadCatalog();
 }
 
 /** Mazo de ejemplo: 30 cartas jugables, sin la estación (se coloca en SETUP). */

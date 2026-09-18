@@ -1,0 +1,10 @@
+---
+import Base from '../layouts/Base.astro';
+import { DecksPanel } from '../components/decks/DecksPanel';
+---
+
+<Base title="Deck Builder">
+  <main class="mx-auto flex min-h-dvh w-full max-w-5xl flex-col justify-center px-6 py-10">
+    <DecksPanel client:only="react" />
+  </main>
+</Base>
