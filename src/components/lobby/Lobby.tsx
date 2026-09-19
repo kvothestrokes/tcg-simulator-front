@@ -15,7 +15,9 @@ import { useCallback, useEffect, useMemo, useState, type SyntheticEvent } from '
 import { Panel, PanelSection } from '../ui/Panel';
 import { StatusDot } from '../ui/StatusDot';
 import { Wordmark } from '../ui/Wordmark';
+import { useDecks } from '../../hooks/useDecks';
 import { useSession } from '../../hooks/useSession';
+import { getSelectedDeckId, setSelectedDeckId } from '../../lib/decks/selectedDeck';
 import { ApiError, RealtimeApi, errorMessage, type HealthResponse, type RoomResponse } from '../../lib/api';
 import { roomPath } from '../../lib/config';
 import { loginPath } from '../../lib/navigation';
@@ -40,6 +42,7 @@ interface RecentRoom {
 export function Lobby() {
   const { identity, loading, signOut } = useSession();
   const api = useMemo(() => new RealtimeApi(getAccessToken), []);
+  const { decks, loading: decksLoading, enabled: decksEnabled } = useDecks();
 
   const [code, setCode] = useState('');
   const [customCode, setCustomCode] = useState('');
@@ -47,6 +50,27 @@ export function Lobby() {
   const [error, setError] = useState<string | null>(null);
   const [recent, setRecent] = useState<RecentRoom[]>([]);
   const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [selectedDeck, setSelectedDeck] = useState<string | null>(null);
+
+  // Restore the previously chosen loadout once the identity is known.
+  useEffect(() => {
+    setSelectedDeck(getSelectedDeckId(identity?.userId));
+  }, [identity?.userId]);
+
+  // Choosing a deck is mandatory only when the feature is on and the player
+  // actually has decks to choose from; otherwise the table falls back to the
+  // sample deck.
+  const mustChooseDeck = decksEnabled && decks.length > 0;
+  const deckChosen = selectedDeck !== null && decks.some((d) => d.id === selectedDeck);
+  const deckReady = !mustChooseDeck || deckChosen;
+
+  const chooseDeck = useCallback(
+    (deckId: string) => {
+      setSelectedDeck(deckId);
+      setSelectedDeckId(identity?.userId, deckId);
+    },
+    [identity?.userId],
+  );
 
   useEffect(() => {
     if (loading || identity) return;
@@ -100,6 +124,7 @@ export function Lobby() {
   }, []);
 
   const handleCreate = useCallback(async () => {
+    if (!deckReady) return;
     setBusy('create');
     setError(null);
     try {
@@ -109,13 +134,14 @@ export function Lobby() {
       setError(err instanceof ApiError ? err.humanMessage : errorMessage(err));
       setBusy(null);
     }
-  }, [api, customCode, enterRoom]);
+  }, [api, customCode, enterRoom, deckReady]);
 
   const handleJoin = useCallback(
     async (event: SyntheticEvent) => {
       event.preventDefault();
       const wanted = code.trim().toUpperCase();
       if (!wanted) return;
+      if (!deckReady) return;
 
       setBusy('join');
       setError(null);
@@ -129,7 +155,7 @@ export function Lobby() {
         setBusy(null);
       }
     },
-    [api, code, enterRoom],
+    [api, code, enterRoom, deckReady],
   );
 
   if (loading || !identity) {
@@ -147,11 +173,69 @@ export function Lobby() {
               #{shortName(identity.userId)}
             </span>
           </span>
+          <a className="btn btn--sm" href="/decks">
+            Mis mazos
+          </a>
           <button type="button" className="btn btn--sm btn--ghost" onClick={() => void signOut()}>
             Salir
           </button>
         </div>
       </header>
+
+      {/* --- elegir mazo ---------------------------------------------------- */}
+      {decksEnabled ? (
+        <PanelSection title="Tu mazo" titleSize="lg" cut={16} bodyClassName="p-4 pt-2">
+          <p className="mb-4 text-sm text-[var(--color-ink-dim)]">
+            Elige con qué mazo vas a jugar. Serán las únicas cartas disponibles en la
+            partida.
+          </p>
+
+          {decksLoading ? (
+            <p className="hud-sub animate-pulse text-xs">Cargando mazos…</p>
+          ) : decks.length === 0 ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-sm text-[var(--color-ink-faint)]">
+                Todavía no tienes mazos.
+              </p>
+              <a className="btn btn--sm btn--primary" href="/decks">
+                Crear un mazo
+              </a>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="min-w-[220px] flex-1">
+                <label className="hud-sub mb-2 block" htmlFor="deck-select">
+                  Mazo seleccionado
+                </label>
+                <select
+                  id="deck-select"
+                  className="field w-full cursor-pointer"
+                  value={selectedDeck ?? ''}
+                  onChange={(e) => chooseDeck(e.target.value)}
+                >
+                  <option value="" disabled>
+                    Elige un mazo…
+                  </option>
+                  {decks.map((deck) => (
+                    <option key={deck.id} value={deck.id}>
+                      {deck.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <a className="btn btn--sm shrink-0" href="/decks">
+                Gestionar mazos
+              </a>
+            </div>
+          )}
+
+          {mustChooseDeck && !deckChosen ? (
+            <p className="mt-3 text-[11px] text-[#fda4af]">
+              Selecciona un mazo para poder crear o entrar a una sala.
+            </p>
+          ) : null}
+        </PanelSection>
+      ) : null}
 
       <div className="grid gap-5 md:grid-cols-2">
         {/* --- crear ------------------------------------------------------- */}
@@ -177,7 +261,7 @@ export function Lobby() {
             type="button"
             className="btn btn--primary w-full"
             onClick={() => void handleCreate()}
-            disabled={busy !== null}
+            disabled={busy !== null || !deckReady}
           >
             {busy === 'create' ? 'Creando…' : 'Crear sala'}
           </button>
@@ -208,7 +292,7 @@ export function Lobby() {
             <button
               type="submit"
               className="btn w-full"
-              disabled={busy !== null || code.trim().length < 4}
+              disabled={busy !== null || code.trim().length < 4 || !deckReady}
             >
               {busy === 'join' ? 'Entrando…' : 'Entrar'}
             </button>

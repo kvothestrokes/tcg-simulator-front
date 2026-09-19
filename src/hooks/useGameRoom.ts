@@ -42,7 +42,7 @@ export interface UseGameRoomOptions {
 
 export interface GameActions {
   /** Declara el mazo listo y fija el contador de cartas. */
-  setupDeck: (deckCount: number, deckName?: string) => void;
+  setupDeck: (deckCount: number, deckName?: string, station?: CardDef) => void;
   draw: (count: number) => void;
   shuffleDeck: (deckCount: number) => void;
   playCard: (input: {
@@ -200,11 +200,11 @@ export function useGameRoom({ roomCode, userId, onEvent }: UseGameRoomOptions): 
 
   const actions = useMemo<GameActions>(
     () => ({
-      setupDeck: (deckCount, deckName) =>
+      setupDeck: (deckCount, deckName, station) =>
         declare(GameEventType.Setup, {
           deckCount,
           deckName: deckName ?? 'Mazo inicial',
-          station: getStarterStation(),
+          station: station ?? getStarterStation(),
         }),
 
       draw: (count) => declare(GameEventType.Draw, { count }),

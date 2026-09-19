@@ -25,6 +25,7 @@ import type { DragPayload } from './dnd';
 import { Panel } from '../ui/Panel';
 import { useGameRoom } from '../../hooks/useGameRoom';
 import { usePrivateDeck } from '../../hooks/usePrivateDeck';
+import { useSelectedLoadout } from '../../hooks/useSelectedLoadout';
 import { useSession } from '../../hooks/useSession';
 import { PHASES, type CardInstance, type ZoneId } from '../../lib/game/types';
 import { loginPath } from '../../lib/navigation';
@@ -40,7 +41,8 @@ export function GameTable() {
   const code = useRoomCode();
   const { identity, loading: sessionLoading } = useSession();
 
-  const deck = usePrivateDeck(code ?? '', identity?.userId);
+  const loadout = useSelectedLoadout(identity?.userId);
+  const deck = usePrivateDeck(code ?? '', identity?.userId, loadout.cardIds);
   const { loading, fatalError, connection, latencyMs, lastError, state, me, opponent, actions } =
     useGameRoom({
       roomCode: code ?? '',
@@ -310,14 +312,33 @@ export function GameTable() {
                 <button
                   type="button"
                   className="btn btn--primary w-full"
-                  onClick={() => actions.setupDeck(deck.starterSize, 'Mazo de ejemplo')}
+                  onClick={() =>
+                    actions.setupDeck(
+                      deck.deckSize,
+                      loadout.deckName ?? 'Mazo de ejemplo',
+                      loadout.station ?? undefined,
+                    )
+                  }
                   disabled={!canAct}
                 >
-                  Preparar mazo ({deck.starterSize})
+                  Preparar mazo ({deck.deckSize})
                 </button>
                 <p className="hud-sub mt-2 text-[9px] leading-relaxed">
-                  Baraja el mazo de ejemplo en tu navegador. El rival solo verá cuántas
-                  cartas tienes.
+                  {loadout.ready ? (
+                    <>
+                      Mazo elegido:{' '}
+                      <span className="text-[var(--color-signal)]">{loadout.deckName}</span>. Se baraja
+                      en tu navegador; el rival solo verá cuántas cartas tienes.
+                    </>
+                  ) : (
+                    <>
+                      No elegiste mazo en el hangar: se usará el de ejemplo.{' '}
+                      <a className="underline" href="/lobby">
+                        Elegir mazo
+                      </a>
+                      .
+                    </>
+                  )}
                 </p>
               </>
             ) : (

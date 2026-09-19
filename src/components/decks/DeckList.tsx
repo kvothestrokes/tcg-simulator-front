@@ -80,18 +80,27 @@ export function DeckList({ decks, selectedId, loading, onSelect, onCreate, onDel
           {decks.map((deck) => (
             <li
               key={deck.id}
-              className="flex items-center justify-between gap-2 py-2"
+              className={`flex items-center justify-between gap-2 rounded-md px-2 py-2 transition-colors hover:bg-[rgba(255,255,255,0.03)] ${selectedId === deck.id ? 'bg-[rgba(255,255,255,0.04)]' : ''}`}
             >
               <button
                 type="button"
-                className={`flex-1 text-left text-sm truncate ${selectedId === deck.id ? 'text-[var(--color-signal)]' : 'text-[var(--color-ink)]'}`}
+                className={`flex-1 cursor-pointer text-left text-sm truncate ${selectedId === deck.id ? 'text-[var(--color-signal)]' : 'text-[var(--color-ink)]'}`}
                 onClick={() => onSelect(deck)}
+                title={`Open ${deck.nombre}`}
               >
                 {deck.nombre}
               </button>
               <button
                 type="button"
-                className="btn btn--sm btn--danger shrink-0"
+                className="btn btn--sm btn--primary shrink-0 cursor-pointer"
+                onClick={() => onSelect(deck)}
+                aria-label={`Edit and view deck ${deck.nombre}`}
+              >
+                Edit / View
+              </button>
+              <button
+                type="button"
+                className="btn btn--sm btn--danger shrink-0 cursor-pointer"
                 disabled={busy}
                 onClick={() => void handleDelete(deck.id)}
                 aria-label={`Delete deck ${deck.nombre}`}

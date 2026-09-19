@@ -39,7 +39,7 @@ export interface PrivateDeck {
   deck: PrivateCard[];
   hand: PrivateCard[];
   /** Tamaño del mazo que se declarará al preparar la partida. */
-  starterSize: number;
+  deckSize: number;
   /**
    * Aplica uno de TUS eventos ya persistidos. Ignora los del rival y los que ya
    * se hubieran aplicado antes.
@@ -49,7 +49,15 @@ export interface PrivateDeck {
   forget: () => void;
 }
 
-export function usePrivateDeck(roomCode: string, userId: string | undefined): PrivateDeck {
+/**
+ * @param loadoutCardIds  Cartas del mazo elegido (ids repetidos por copia, sin la
+ *   estación). Si viene vacío se usa el mazo de ejemplo como respaldo.
+ */
+export function usePrivateDeck(
+  roomCode: string,
+  userId: string | undefined,
+  loadoutCardIds: string[] = [],
+): PrivateDeck {
   const storageKey = useMemo(
     () => (userId ? `cb:deck:${roomCode}:${userId}` : null),
     [roomCode, userId],
@@ -57,6 +65,13 @@ export function usePrivateDeck(roomCode: string, userId: string | undefined): Pr
 
   const [deck, setDeck] = useState<PrivateCard[]>([]);
   const [hand, setHand] = useState<PrivateCard[]>([]);
+
+  // La lista de cartas elegida se consulta dentro del manejador de SETUP, que es
+  // síncrono; por eso se guarda en una ref además de la prop.
+  const loadoutRef = useRef<string[]>(loadoutCardIds);
+  useEffect(() => {
+    loadoutRef.current = loadoutCardIds;
+  }, [loadoutCardIds]);
 
   // La secuencia aplicada se lleva en una ref: se consulta dentro del manejador
   // de eventos, donde no se puede depender de que React haya re-renderizado.
@@ -97,7 +112,9 @@ export function usePrivateDeck(roomCode: string, userId: string | undefined): Pr
 
       switch (event.type) {
         case GameEventType.Setup: {
-          setDeck(shuffleArray(buildDeck(buildStarterDeck())));
+          const chosen = loadoutRef.current;
+          const ids = chosen.length > 0 ? chosen : buildStarterDeck();
+          setDeck(shuffleArray(buildDeck(ids)));
           setHand([]);
           break;
         }
@@ -166,7 +183,9 @@ export function usePrivateDeck(roomCode: string, userId: string | undefined): Pr
     if (storageKey) writeStored(storageKey, null);
   }, [storageKey]);
 
-  return { deck, hand, starterSize: STARTER_SIZE, applyOwnEvent, forget };
+  const deckSize = loadoutCardIds.length > 0 ? loadoutCardIds.length : STARTER_SIZE;
+
+  return { deck, hand, deckSize, applyOwnEvent, forget };
 }
 
 const STARTER_SIZE = buildStarterDeck().length;

@@ -32,6 +32,7 @@ export function DecksPanel() {
     loadDeck,
     addCard,
     removeCard,
+    setQty,
     refresh,
   } = useDecks();
 
@@ -101,16 +102,31 @@ export function DecksPanel() {
     [removeCard],
   );
 
+  const handleSetQty = useCallback(
+    async (deckId: string, cardId: string, qty: number) => {
+      await setQty(deckId, cardId, qty);
+      setDeckItems((prev) =>
+        prev.map((i) => (i.card_id === cardId ? { ...i, qty } : i)),
+      );
+    },
+    [setQty],
+  );
+
   // Disabled / offline state
   if (!enabled) {
     return (
-      <Panel tone="dim" cut={12} innerClassName="px-6 py-8 text-center">
-        <p className="hud-title text-sm mb-2">Deck Builder</p>
-        <p className="hud-sub text-[11px] opacity-60">
-          Supabase is not configured. Deck persistence is disabled.
-          Set PUBLIC_SUPABASE_URL and PUBLIC_SUPABASE_PUBLISHABLE_KEY to enable it.
-        </p>
-      </Panel>
+      <div className="flex flex-col gap-4 w-full max-w-7xl mx-auto">
+        <a className="btn btn--sm btn--ghost self-start" href="/lobby">
+          ← Back
+        </a>
+        <Panel tone="dim" cut={12} innerClassName="px-6 py-8 text-center">
+          <p className="hud-title text-sm mb-2">Deck Builder</p>
+          <p className="hud-sub text-[11px] opacity-60">
+            Supabase is not configured. Deck persistence is disabled.
+            Set PUBLIC_SUPABASE_URL and PUBLIC_SUPABASE_PUBLISHABLE_KEY to enable it.
+          </p>
+        </Panel>
+      </div>
     );
   }
 
@@ -120,8 +136,13 @@ export function DecksPanel() {
   }
 
   return (
-    <div className="flex flex-col gap-4 w-full max-w-4xl mx-auto">
-      <h1 className="hud-title text-base">Deck Builder</h1>
+    <div className="flex flex-col gap-4 w-full max-w-7xl mx-auto">
+      <div className="flex items-center gap-3">
+        <a className="btn btn--sm btn--ghost" href="/lobby">
+          ← Back
+        </a>
+        <h1 className="hud-title text-lg">Deck Builder</h1>
+      </div>
 
       {error ? (
         <p className="text-sm text-[#fda4af] border border-[rgba(244,63,94,0.4)] bg-[rgba(244,63,94,0.08)] px-4 py-2">
@@ -136,6 +157,7 @@ export function DecksPanel() {
           onRename={renameDeck}
           onAddCard={handleAddCard}
           onRemoveCard={handleRemoveCard}
+          onSetQty={handleSetQty}
           onBack={() => {
             setSelected(null);
             setDeckItems([]);
