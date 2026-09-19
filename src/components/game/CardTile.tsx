@@ -19,6 +19,9 @@ interface CardTileProps {
   draggable?: boolean;
   onClick?: () => void;
   onDoubleClick?: () => void;
+  onContextMenu?: (event: React.MouseEvent) => void;
+  onPointerEnter?: () => void;
+  onPointerLeave?: () => void;
   onDragStart?: (event: React.DragEvent) => void;
   onDragEnd?: (event: React.DragEvent) => void;
   className?: string;
@@ -32,6 +35,9 @@ export function CardTile({
   draggable = false,
   onClick,
   onDoubleClick,
+  onContextMenu,
+  onPointerEnter,
+  onPointerLeave,
   onDragStart,
   onDragEnd,
   className = '',
@@ -57,6 +63,12 @@ export function CardTile({
       draggable={draggable}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        onContextMenu?.(event);
+      }}
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       title={tooltip}

@@ -17,12 +17,13 @@ import { getFactionTheme } from '../../lib/card/getFactionTheme';
 import { stripKeywordMarkers } from '../../lib/card/extractKeywords';
 import {
   CARD_TYPE_LABEL,
-  PILOT_SLOTS,
   ZONE_LABEL,
   type CardDef,
   type CardInstance,
+  type PlayerState,
   type ZoneId,
 } from '../../lib/game/types';
+import { attachedTo, effectiveAttack, effectiveDefense } from '../../lib/game/rules';
 
 export type Selection =
   | { kind: 'hand'; card: PrivateCard }
@@ -31,9 +32,12 @@ export type Selection =
 
 interface CardInspectorProps {
   selection: Selection;
+  hover?: CardInstance | null;
+  owner?: PlayerState;
+  ships?: CardInstance[];
   onClose: () => void;
   onEnlarge?: () => void;
-  onPlay: (to: ZoneId, options?: { faceUp?: boolean; slot?: number }) => void;
+  onPlay: (to: ZoneId, options?: { faceUp?: boolean; slot?: number; attachedTo?: string }) => void;
   onMove: (to: ZoneId, options?: { slot?: number }) => void;
   onTap: (tapped: boolean) => void;
   onFlip: (faceUp: boolean) => void;
@@ -41,14 +45,21 @@ interface CardInspectorProps {
   onToHand: () => void;
   onToDeck: () => void;
   onDiscardFromHand: () => void;
+  onLink?: (parentUid: string) => void;
+  onUnlink?: () => void;
+  onAttack?: () => void;
+  onDestroy?: () => void;
 }
 
-const PLAY_TARGETS: ZoneId[] = ['battle', 'station', 'resources'];
-const MOVE_TARGETS: ZoneId[] = ['battle', 'station', 'resources', 'void'];
+const PLAY_TARGETS: ZoneId[] = ['battle', 'resources', 'pilots', 'void'];
+const MOVE_TARGETS: ZoneId[] = ['battle', 'station', 'resources', 'pilots', 'void'];
 const COUNTER_KEYS = ['daño', 'escudo', 'marca'] as const;
 
 export function CardInspector({
   selection,
+  hover,
+  owner,
+  ships = [],
   onClose,
   onEnlarge,
   onPlay,
@@ -59,23 +70,37 @@ export function CardInspector({
   onToHand,
   onToDeck,
   onDiscardFromHand,
+  onLink,
+  onUnlink,
+  onAttack,
+  onDestroy,
 }: CardInspectorProps) {
-  if (!selection) {
+  const display = hover ?? (selection?.kind === 'board' ? selection.card : undefined);
+  const linked = display && owner ? attachedTo(owner, display.uid) : [];
+
+  if (!selection && !hover) {
     return (
       <Panel tone="dim" cut={10} className="shrink-0" innerClassName="px-3 py-4">
         <p className="hud-sub text-[10px] leading-relaxed">
-          Selecciona una carta para verla y actuar sobre ella. También puedes
-          arrastrarla de una zona a otra.
+          Selecciona una carta para verla y actuar sobre ella. Pasa el cursor
+          sobre una nave para ver piloto y gears enlazados.
         </p>
       </Panel>
     );
   }
 
-  const def = selection.kind === 'hand' ? selection.card.def : selection.card.def;
-  const instance = selection.kind === 'board' ? selection.card : undefined;
-  const editable = selection.kind === 'hand' || selection.owned;
+  const def =
+    hover?.def ??
+    (selection?.kind === 'hand' ? selection.card.def : selection!.card.def);
+  const instance =
+    hover ?? (selection?.kind === 'board' ? selection.card : undefined);
+  const editable = Boolean(selection) && (selection?.kind === 'hand' || selection?.owned);
   const theme = getFactionTheme(def.faccion);
   const previewWidth = def.tipo === 'Estación' ? 320 : 220;
+  const combat =
+    instance && owner && instance.def.tipo === 'Nave'
+      ? `${effectiveAttack(owner, instance)}/${effectiveDefense(owner, instance)}`
+      : null;
 
   return (
     <Panel cut={10} className="min-h-0 min-h-[280px] flex-[1.6]" innerClassName="flex flex-col gap-3 overflow-y-auto p-3">
@@ -89,7 +114,8 @@ export function CardInspector({
             <p className="hud-sub mt-0.5 text-[9px]">
               {CARD_TYPE_LABEL[def.tipo]}
               {def.tipo !== 'Estación' ? ` · Coste ${def.coste_recursos}` : ''}
-              {def.tipo === 'Nave' ? ` · ${def.ataque ?? 0}/${def.escudo ?? 0}` : ''}
+              {combat ? ` · ${combat}` : def.tipo === 'Nave' ? ` · ${def.ataque ?? 0}/${def.escudo ?? 0}` : ''}
+              {hover && selection ? ' · hover' : ''}
             </p>
           </div>
           <button
@@ -116,6 +142,16 @@ export function CardInspector({
         ) : null}
       </header>
 
+      {linked.length > 0 ? (
+        <Group label="Enlazadas">
+          {linked.map((card) => (
+            <span key={card.uid} className="hud-sub border border-[var(--color-stroke-faint)] px-1.5 py-0.5 text-[9px]">
+              {card.def.tipo}: {card.def.nombre}
+            </span>
+          ))}
+        </Group>
+      ) : null}
+
       <TypeFacts def={def} />
 
       {def.texto_efecto ? (
@@ -137,10 +173,11 @@ export function CardInspector({
         </div>
       ) : null}
 
-      {!editable ? (
-        <p className="hud-sub text-[9px] opacity-60">Carta del rival: solo lectura.</p>
+      {!editable || !selection ? (
+        <p className="hud-sub text-[9px] opacity-60">
+          {selection ? 'Carta del rival: solo lectura.' : 'Pasa el cursor o selecciona para actuar.'}
+        </p>
       ) : selection.kind === 'hand' ? (
-        // --- carta en la mano -------------------------------------------------
         <>
           <Group label="Jugar en">
             {PLAY_TARGETS.map((zone) => (
@@ -155,35 +192,20 @@ export function CardInspector({
             ))}
           </Group>
 
-          <Group label="Asignar piloto">
-            {Array.from({ length: PILOT_SLOTS }, (_, slot) => (
-              <button
-                key={slot}
-                type="button"
-                className="btn btn--sm"
-                onClick={() => onPlay('pilots', { slot })}
-              >
-                Hueco {slot + 1}
-              </button>
-            ))}
-          </Group>
-
-          <Group label="Boca abajo">
-            <button
-              type="button"
-              className="btn btn--sm"
-              onClick={() => onPlay('resources', { faceUp: false })}
-            >
-              A recursos
-            </button>
-            <button
-              type="button"
-              className="btn btn--sm"
-              onClick={() => onPlay('battle', { faceUp: false })}
-            >
-              A batalla
-            </button>
-          </Group>
+          {ships.length > 0 && (def.tipo === 'Piloto' || def.tipo === 'Gear') ? (
+            <Group label="Enlazar a nave">
+              {ships.map((ship) => (
+                <button
+                  key={ship.uid}
+                  type="button"
+                  className="btn btn--sm"
+                  onClick={() => onLink?.(ship.uid)}
+                >
+                  {ship.def.nombre}
+                </button>
+              ))}
+            </Group>
+          ) : null}
 
           <Group label="Descartar">
             <button type="button" className="btn btn--sm btn--danger" onClick={onDiscardFromHand}>
@@ -192,7 +214,6 @@ export function CardInspector({
           </Group>
         </>
       ) : (
-        // --- carta en el tablero ----------------------------------------------
         <>
           <Group label="Estado">
             <button
@@ -209,7 +230,32 @@ export function CardInspector({
             >
               {instance?.faceUp ? 'Boca abajo' : 'Boca arriba'}
             </button>
+            {instance?.def.tipo === 'Nave' ? (
+              <button type="button" className="btn btn--sm btn--primary" onClick={onAttack}>
+                Atacar
+              </button>
+            ) : null}
+            {instance?.attachedTo ? (
+              <button type="button" className="btn btn--sm" onClick={onUnlink}>
+                Desenganchar
+              </button>
+            ) : null}
           </Group>
+
+          {ships.length > 0 && (instance?.def.tipo === 'Piloto' || instance?.def.tipo === 'Gear') ? (
+            <Group label="Enlazar a">
+              {ships.map((ship) => (
+                <button
+                  key={ship.uid}
+                  type="button"
+                  className="btn btn--sm"
+                  onClick={() => onLink?.(ship.uid)}
+                >
+                  {ship.def.nombre}
+                </button>
+              ))}
+            </Group>
+          ) : null}
 
           <Group label="Mover a">
             {MOVE_TARGETS.filter((zone) => zone !== instance?.zone).map((zone) => (
@@ -222,18 +268,6 @@ export function CardInspector({
                 {ZONE_LABEL[zone]}
               </button>
             ))}
-            {instance?.zone !== 'pilots'
-              ? Array.from({ length: PILOT_SLOTS }, (_, slot) => (
-                  <button
-                    key={`pilot-${slot}`}
-                    type="button"
-                    className="btn btn--sm"
-                    onClick={() => onMove('pilots', { slot })}
-                  >
-                    Piloto {slot + 1}
-                  </button>
-                ))
-              : null}
           </Group>
 
           <Group label="Contadores">
@@ -272,6 +306,11 @@ export function CardInspector({
             <button type="button" className="btn btn--sm" onClick={onToDeck}>
               Al mazo
             </button>
+            {instance?.def.tipo === 'Nave' ? (
+              <button type="button" className="btn btn--sm btn--danger" onClick={onDestroy}>
+                Destruir
+              </button>
+            ) : null}
           </Group>
         </>
       )}

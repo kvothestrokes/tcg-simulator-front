@@ -12,7 +12,6 @@ import { useState } from 'react';
 import { StatusDot } from '../ui/StatusDot';
 import { Wordmark } from '../ui/Wordmark';
 import { roomShareUrl } from '../../lib/config';
-import { PHASES } from '../../lib/game/types';
 import type { ConnectionState } from '../../lib/realtime/client';
 
 interface TopBarProps {
@@ -24,8 +23,6 @@ interface TopBarProps {
   phase: string;
   isMyTurn: boolean;
   canAct: boolean;
-  onNextPhase: () => void;
-  onPassTurn: () => void;
   onFinish: () => void;
   onLeave: () => void;
 }
@@ -47,9 +44,7 @@ export function TopBar({
   turn,
   phase,
   isMyTurn,
-  canAct,
-  onNextPhase,
-  onPassTurn,
+  canAct: _canAct,
   onFinish,
   onLeave,
 }: TopBarProps) {
@@ -94,18 +89,6 @@ export function TopBar({
         >
           {phase}
         </span>
-        <button
-          type="button"
-          className="btn btn--sm"
-          onClick={onNextPhase}
-          disabled={!canAct}
-          title={`Siguiente fase (${PHASES.join(' → ')})`}
-        >
-          Fase
-        </button>
-        <button type="button" className="btn btn--sm btn--primary" onClick={onPassTurn} disabled={!canAct}>
-          Pasar turno
-        </button>
 
         <span className="mx-1 h-5 w-px bg-[var(--color-stroke-faint)]" aria-hidden="true" />
 

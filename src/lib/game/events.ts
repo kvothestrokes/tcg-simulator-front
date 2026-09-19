@@ -32,8 +32,22 @@ export const GameEventType = {
   Heat: 'HEAT',
   /** Fija los puntos de recurso declarados. */
   Resource: 'RESOURCE',
-  /** Cambio de fase o de turno. Lo declaran los jugadores, nadie lo impone. */
+  /** Cambio de fase dentro del turno (Activación / Principal / Final). */
   Phase: 'PHASE',
+  /** Inicio de turno: robo, recurso compartido y refrigeración. */
+  TurnStart: 'TURN_START',
+  /** Enlaza un piloto o gear a una nave. */
+  Link: 'LINK',
+  Unlink: 'UNLINK',
+  /** Ataque de una nave a otra nave o a la estación. */
+  Attack: 'ATTACK',
+  /** Destruye una nave y aplica desenganche (piloto eyecta, gears a recursos). */
+  Destroy: 'DESTROY',
+  /** Convoca un token a una ranura de batalla. */
+  TokenSpawn: 'TOKEN_SPAWN',
+  /** Retira un token de la partida (nunca al descarte). */
+  Remove: 'REMOVE',
+  GameOver: 'GAME_OVER',
   Dice: 'DICE',
   Shuffle: 'SHUFFLE',
   /** Vacía el tablero para empezar otra partida en la misma sala. */
@@ -70,6 +84,8 @@ export interface PlayData {
   to: ZoneId;
   slot?: number;
   faceUp: boolean;
+  attachedTo?: string;
+  isToken?: boolean;
 }
 
 export interface MoveData {
@@ -78,6 +94,7 @@ export interface MoveData {
   to: ZoneId;
   slot?: number;
   faceUp?: boolean;
+  attachedTo?: string | null;
 }
 
 export interface ToHandData {
@@ -119,6 +136,48 @@ export interface PhaseData {
   phase: string;
   turn: number;
   activePlayerId?: string;
+}
+
+export interface TurnStartData {
+  turn: number;
+  activePlayerId: string;
+  /** Uid de la carta de recurso que sale del mazo compartido (si queda). */
+  resourceUid?: string;
+}
+
+export interface LinkData {
+  childUid: string;
+  parentUid: string;
+}
+
+export interface UnlinkData {
+  childUid: string;
+}
+
+export interface AttackData {
+  sourceUid: string;
+  targetOwnerId: string;
+  targetUid: string;
+}
+
+export interface DestroyData {
+  uid: string;
+}
+
+export interface TokenSpawnData {
+  uid: string;
+  slot: number;
+  def: CardDef;
+}
+
+export interface RemoveData {
+  uid: string;
+}
+
+export interface GameOverData {
+  winnerId: string;
+  reason: 'deck_out' | 'station' | 'concede';
+  loserId?: string;
 }
 
 export interface DiceData {

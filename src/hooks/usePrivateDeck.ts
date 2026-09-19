@@ -129,6 +129,16 @@ export function usePrivateDeck(
           break;
         }
 
+        case GameEventType.TurnStart: {
+          setDeck((current) => {
+            if (current.length === 0) return current;
+            const taken = current.slice(0, 1);
+            setHand((currentHand) => [...currentHand, ...taken]);
+            return current.slice(1);
+          });
+          break;
+        }
+
         case GameEventType.Shuffle: {
           setDeck((current) => shuffleArray(current));
           break;

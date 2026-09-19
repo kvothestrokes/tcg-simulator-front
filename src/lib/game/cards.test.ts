@@ -11,7 +11,7 @@ describe('catálogo CyberPunk', () => {
     expect(getStarterStation().heat_actual).toBe(0);
 
     const deck = buildStarterDeck();
-    expect(deck).toHaveLength(30);
+    expect(deck).toHaveLength(40);
     expect(deck.every((id) => findCard(id)?.tipo !== 'Estación')).toBe(true);
   });
 

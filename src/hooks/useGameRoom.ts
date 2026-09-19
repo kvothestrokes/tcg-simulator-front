@@ -14,6 +14,7 @@ import { ApiError, RealtimeApi, errorMessage, type PlayerView, type RoomView } f
 import { GameEventType } from '../lib/game/events';
 import { applyEvent, applyPresence, seedPlayers } from '../lib/game/state';
 import { getStarterStation, publicCardDef } from '../lib/game/cards';
+import { TOKEN_DRONE_DEF } from '../lib/game/rules';
 import {
   emptyState,
   HEAT_MAX,
@@ -52,8 +53,17 @@ export interface GameActions {
     to: ZoneId;
     slot?: number;
     faceUp?: boolean;
+    attachedTo?: string;
+    isToken?: boolean;
   }) => void;
-  moveCard: (input: { uid: string; from: ZoneId; to: ZoneId; slot?: number; faceUp?: boolean }) => void;
+  moveCard: (input: {
+    uid: string;
+    from: ZoneId;
+    to: ZoneId;
+    slot?: number;
+    faceUp?: boolean;
+    attachedTo?: string | null;
+  }) => void;
   /** La definición viaja en el evento para que la mano pueda recuperarla. */
   returnToHand: (card: CardInstance) => void;
   returnToDeck: (card: CardInstance, position?: 'top' | 'bottom' | 'shuffle') => void;
@@ -63,6 +73,14 @@ export interface GameActions {
   setHeat: (value: number) => void;
   setResources: (value: number) => void;
   setPhase: (phase: string, turn: number, activePlayerId?: string) => void;
+  startTurn: (turn: number, activePlayerId: string) => void;
+  linkCard: (childUid: string, parentUid: string) => void;
+  unlinkCard: (childUid: string) => void;
+  attack: (sourceUid: string, targetOwnerId: string, targetUid: string) => void;
+  destroyCard: (uid: string) => void;
+  spawnToken: (slot: number) => void;
+  removeCard: (uid: string) => void;
+  concede: (winnerId: string) => void;
   rollDice: (sides: number) => void;
   resetTable: () => void;
   sendChat: (message: string) => void;
@@ -211,11 +229,20 @@ export function useGameRoom({ roomCode, userId, onEvent }: UseGameRoomOptions): 
 
       shuffleDeck: (deckCount) => declare(GameEventType.Shuffle, { deckCount }),
 
-      playCard: ({ uid, def, from, to, slot, faceUp = true }) =>
-        declare(GameEventType.Play, { uid, def: publicCardDef(def), from, to, slot, faceUp }),
+      playCard: ({ uid, def, from, to, slot, faceUp = true, attachedTo, isToken }) =>
+        declare(GameEventType.Play, {
+          uid,
+          def: publicCardDef(def),
+          from,
+          to,
+          slot,
+          faceUp,
+          attachedTo,
+          isToken,
+        }),
 
-      moveCard: ({ uid, from, to, slot, faceUp }) =>
-        declare(GameEventType.Move, { uid, from, to, slot, faceUp }),
+      moveCard: ({ uid, from, to, slot, faceUp, attachedTo }) =>
+        declare(GameEventType.Move, { uid, from, to, slot, faceUp, attachedTo }),
 
       returnToHand: (card) =>
         declare(GameEventType.ToHand, { uid: card.uid, from: card.zone, def: card.def }),
@@ -242,6 +269,34 @@ export function useGameRoom({ roomCode, userId, onEvent }: UseGameRoomOptions): 
 
       setPhase: (phase, turn, activePlayerId) =>
         declare(GameEventType.Phase, { phase, turn, activePlayerId }),
+
+      startTurn: (turn, activePlayerId) =>
+        declare(GameEventType.TurnStart, {
+          turn,
+          activePlayerId,
+          resourceUid: randomUuid(),
+        }),
+
+      linkCard: (childUid, parentUid) => declare(GameEventType.Link, { childUid, parentUid }),
+
+      unlinkCard: (childUid) => declare(GameEventType.Unlink, { childUid }),
+
+      attack: (sourceUid, targetOwnerId, targetUid) =>
+        declare(GameEventType.Attack, { sourceUid, targetOwnerId, targetUid }),
+
+      destroyCard: (uid) => declare(GameEventType.Destroy, { uid }),
+
+      spawnToken: (slot) =>
+        declare(GameEventType.TokenSpawn, {
+          uid: randomUuid(),
+          slot,
+          def: publicCardDef(TOKEN_DRONE_DEF),
+        }),
+
+      removeCard: (uid) => declare(GameEventType.Remove, { uid }),
+
+      concede: (winnerId) =>
+        declare(GameEventType.GameOver, { winnerId, reason: 'concede' }),
 
       rollDice: (sides) =>
         declare(GameEventType.Dice, {

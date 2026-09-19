@@ -603,20 +603,23 @@
   position: absolute;
   inset: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) 250px;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto 1fr auto;
   grid-template-areas:
-    'header right'
-    'hp right'
+    'header hp'
+    '.      .'
     'footer footer';
   gap: 8px 22px;
-  padding: 22px 24px 16px;
+  padding: 20px 22px 18px;
 }
 
 .station-header {
   grid-area: header;
+  position: relative;
+  z-index: 1;
+  align-self: start;
   min-width: 0;
-  padding-top: 4px;
+  padding-top: 2px;
 }
 
 .station-kicker {
@@ -627,6 +630,7 @@
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: #3ee0a0;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.75);
 }
 
 .station-name {
@@ -650,8 +654,9 @@
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.16em;
-  color: #8a9bb3;
+  color: #c2cede;
   text-transform: uppercase;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.8);
 }
 
 .station-typeline .dot,
@@ -660,18 +665,11 @@
   opacity: 0.55;
 }
 
-.station-right {
-  grid-area: right;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  gap: 8px;
-}
-
+/* Arte a sangre completa: capa de fondo bajo el contenido de la Estación. */
 .station-art-wrap {
-  position: relative;
-  flex: 1 1 auto;
-  min-height: 140px;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
 }
 
 .cf-root.card.type-estacion .card-art {
@@ -679,22 +677,26 @@
   inset: 0;
   width: 100%;
   height: 100%;
-  border-radius: 4px;
-  border: 1.5px dashed rgba(160, 210, 180, 0.28);
   background: #07110e;
 }
 
-.cf-root.card.type-estacion .card-art.is-framed .card-art-vignette {
-  background:
-    radial-gradient(70% 70% at 50% 45%, rgba(46, 120, 90, 0.18) 0%, transparent 70%),
-    linear-gradient(180deg, transparent 55%, rgba(4, 10, 12, 0.4) 100%);
+/* Oscurecido superior (header/HP) e inferior (panel de efecto) para legibilidad. */
+.cf-root.card.type-estacion .card-art-vignette {
+  background: linear-gradient(
+    180deg,
+    rgba(4, 10, 12, 0.78) 0%,
+    transparent 24%,
+    transparent 52%,
+    rgba(4, 10, 12, 0.9) 100%
+  );
 }
 
 .station-art-caption {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 10px;
+  top: 50%;
+  transform: translateY(-50%);
   text-align: center;
   font-family: var(--font-ui);
   font-size: 10px;
@@ -707,11 +709,18 @@
 
 .station-hp {
   grid-area: hp;
+  position: relative;
+  z-index: 1;
+  justify-self: end;
+  align-self: start;
   display: flex;
   align-items: center;
   gap: 12px;
-  align-self: end;
-  padding-bottom: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(6, 12, 16, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(3px);
 }
 
 .station-hp-copy {
@@ -751,52 +760,19 @@
   box-shadow: 0 0 6px rgba(62, 224, 160, 0.35);
 }
 
-.station-heat {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  flex: 0 0 auto;
-}
-
-.station-heat-label {
-  margin: 0;
-  font-family: var(--font-ui);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: #e07b32;
-}
-
-.station-heat-row {
-  display: flex;
-  gap: 3px;
-}
-
-.station-heat-cell {
-  display: grid;
-  place-items: center;
-}
-
-.station-heat-cap {
-  margin: 0;
-  font-family: var(--font-ui);
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #6d7c90;
-}
-
 .station-footer {
   grid-area: footer;
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(6, 12, 16, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  backdrop-filter: blur(3px);
 }
 
 .station-effect {

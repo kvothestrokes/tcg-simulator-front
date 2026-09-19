@@ -115,8 +115,12 @@ export interface CardInstance {
   def: CardDef;
   ownerId: string;
   zone: ZoneId;
-  /** Hueco 0-2 dentro del Área de Pilotos. */
+    /** Hueco de batalla (0-7) o de reserva de pilotos. */
   slot?: number;
+  /** Uid de la nave a la que está enlazado (piloto o gear). */
+  attachedTo?: string;
+  /** Unidad token: al salir de batalla se retira del juego, no al descarte. */
+  isToken?: boolean;
   faceUp: boolean;
   tapped: boolean;
   counters: Record<string, number>;
@@ -148,27 +152,56 @@ export interface LogEntry {
   chat?: { message: string };
 }
 
+export type EndReason = 'deck_out' | 'station' | 'concede';
+
 export interface GameState {
   players: Record<string, PlayerState>;
   /** Turno declarado por los jugadores; el servidor no lo impone. */
   activePlayerId?: string;
   turn: number;
-  phase: string;
+  phase: Phase | string;
   status: 'waiting' | 'active' | 'finished' | 'abandoned';
+  /** Cartas restantes en el mazo compartido de recursos (15 al empezar). */
+  sharedResourceDeckCount: number;
+  winnerId?: string;
+  endReason?: EndReason;
   log: LogEntry[];
   lastSequence: number;
 }
 
-/** Calor máximo del medidor y umbral de sobrecalentamiento. */
-export const HEAT_MAX = 12;
+/** Calor máximo del medidor (0–10) y umbral visual de sobrecalentamiento. */
+export const HEAT_MAX = 10;
 export const HEAT_THRESHOLD = 8;
+/** Puntos de CC que se disipan al entrar en la Fase Inicial. */
+export const HEAT_COOLDOWN = 5;
 
-export const RESOURCE_MAX = 12;
+export const RESOURCE_MAX = 15;
 
-export const PILOT_SLOTS = 3;
+export const PILOT_SLOTS = 6;
+export const BATTLE_SLOTS = 8;
+export const GEAR_MAX_PER_SHIP = 2;
+export const SHARED_RESOURCE_DECK_SIZE = 15;
+export const COMBAT_DECK_SIZE = 40;
 
-export const PHASES = ['Preparación', 'Recursos', 'Despliegue', 'Combate', 'Fin'] as const;
+export const DAMAGE_COUNTER = 'daño';
+
+export const PHASES = ['Inicial', 'Activación', 'Principal', 'Final'] as const;
 export type Phase = (typeof PHASES)[number];
+
+/** Nombres de fase de partidas anteriores → reglamento 2.4. */
+export const LEGACY_PHASE: Record<string, Phase> = {
+  Preparación: 'Inicial',
+  Recursos: 'Inicial',
+  Despliegue: 'Principal',
+  Combate: 'Principal',
+  Fin: 'Final',
+};
+
+export function normalizePhase(phase: string | undefined): Phase {
+  if (!phase) return 'Inicial';
+  if ((PHASES as readonly string[]).includes(phase)) return phase as Phase;
+  return LEGACY_PHASE[phase] ?? 'Inicial';
+}
 
 export function emptyPlayer(userId: string, seat: 1 | 2): PlayerState {
   return {
@@ -189,8 +222,9 @@ export function emptyState(): GameState {
   return {
     players: {},
     turn: 1,
-    phase: 'Preparación',
+    phase: 'Inicial',
     status: 'waiting',
+    sharedResourceDeckCount: SHARED_RESOURCE_DECK_SIZE,
     log: [],
     lastSequence: 0,
   };

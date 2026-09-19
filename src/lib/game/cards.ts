@@ -184,12 +184,12 @@ export async function hydrateCatalog(): Promise<void> {
   await loadCatalog();
 }
 
-/** Mazo de ejemplo: 30 cartas jugables, sin la estación (se coloca en SETUP). */
+/** Mazo de ejemplo: 40 cartas jugables, sin la estación (se coloca en SETUP). */
 export function buildStarterDeck(): string[] {
   const playable = playableCatalog();
   const deck: string[] = [];
   let i = 0;
-  while (deck.length < 30 && playable.length > 0) {
+  while (deck.length < 40 && playable.length > 0) {
     deck.push(playable[i % playable.length]!.id);
     i++;
   }
