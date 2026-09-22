@@ -142,6 +142,29 @@ describe('TURN_START', () => {
     expect(next.sharedResourceDeckCount).toBe(SHARED_RESOURCE_DECK_SIZE);
   });
 
+  it('endereza las cartas del jugador al iniciar su turno (refresco en Inicial)', () => {
+    const next = reduceAll([
+      event({
+        sequence: 1,
+        type: GameEventType.Setup,
+        data: { deckCount: 40, station: getStarterStation() },
+      }),
+      playShip(2),
+      event({ sequence: 3, type: GameEventType.Tap, data: { uid: 'ship-1', tapped: true } }),
+      event({ sequence: 4, type: GameEventType.Heat, data: { value: 6 } }),
+      event({
+        sequence: 5,
+        type: GameEventType.TurnStart,
+        data: { turn: 2, activePlayerId: 'user-1' },
+      }),
+    ]);
+    const player = next.players['user-1']!;
+    expect(player.cards['ship-1']?.tapped).toBe(false);
+    expect(player.heat).toBe(1);
+    expect(player.handCount).toBe(1);
+    expect(player.deckCount).toBe(39);
+  });
+
   it('declara derrota por deck-out si el mazo está vacío', () => {
     const next = reduceAll([
       event({

@@ -24,6 +24,11 @@ interface ZoneProps {
   onClick?: () => void;
   className?: string;
   emptyHint?: string;
+  /**
+   * Clases de overflow de la zona. Por defecto solo scroll vertical, pero las
+   * zonas cuyas cartas ya se dimensionan para caber lo apagan para no recortar.
+   */
+  overflow?: string;
 }
 
 export function Zone({
@@ -35,12 +40,13 @@ export function Zone({
   onClick,
   className = '',
   emptyHint,
+  overflow = 'overflow-y-auto',
 }: ZoneProps) {
   const [over, setOver] = useState(false);
 
   return (
     <div
-      className={`dropzone relative min-h-0 overflow-y-auto ${className}`}
+      className={`dropzone relative min-h-0 ${overflow} ${className}`}
       data-over={droppable && over}
       data-target={highlighted}
       onClick={onClick}

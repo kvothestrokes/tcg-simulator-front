@@ -422,8 +422,10 @@ export function applyEvent(state: GameState, event: WireEvent): GameState {
         pushLog(next, event, `${name(activeId)} pierde: no quedan cartas en el mazo.`);
         break;
       }
+      // Refresco atómico al entrar en Inicial: se endereza todo, se roba y se
+      // enfría, para que el jugador que empieza su turno vea todo listo de una.
       withPlayer(next, activeId, event.seat ?? 1, (p) => ({
-        ...p,
+        ...untapPlayer(p),
         deckCount: Math.max(0, p.deckCount - 1),
         handCount: p.handCount + 1,
         heat: Math.max(0, p.heat - HEAT_COOLDOWN),
@@ -431,7 +433,7 @@ export function applyEvent(state: GameState, event: WireEvent): GameState {
       pushLog(
         next,
         event,
-        `Turno ${next.turn} · Inicial · juega ${name(activeId)} (roba, −${HEAT_COOLDOWN} CC).`,
+        `Turno ${next.turn} · Inicial · juega ${name(activeId)} (endereza, roba, −${HEAT_COOLDOWN} CC).`,
       );
       break;
     }

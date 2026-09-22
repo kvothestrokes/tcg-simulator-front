@@ -1,5 +1,3 @@
-import { CardStack } from './CardTile';
-import { Panel } from '../ui/Panel';
 import { PHASES, normalizePhase, type Phase } from '../../lib/game/types';
 
 interface CenterStripProps {
@@ -25,6 +23,11 @@ const NEXT_LABEL: Record<Phase, string> = {
   Final: 'Pasar turno',
 };
 
+/**
+ * Franja de control entre los dos tableros. Es una barra fina de una sola línea:
+ * turno/fase a la izquierda, acciones al centro e iniciativa a la derecha. No
+ * gasta alto ni deja huecos vacíos (antes el botón de turno se comía la franja).
+ */
 export function CenterStrip({
   sharedCount,
   phase,
@@ -44,68 +47,84 @@ export function CenterStrip({
     : !isMyTurn
       ? 'Espera al rival'
       : current === 'Final'
-        ? 'Relevar turno'
-        : `Fase ${NEXT_LABEL[current]}`;
+        ? 'Pasar turno'
+        : NEXT_LABEL[current];
 
-  const resourceHint = sharedCount <= 0
-    ? 'Mazo agotado'
-    : resourceDrawnThisTurn
-      ? 'Ya robaste este turno'
-      : isMyTurn
-        ? '1 por turno'
-        : 'Espera tu turno';
+  const resourceHint =
+    sharedCount <= 0
+      ? 'Mazo agotado'
+      : resourceDrawnThisTurn
+        ? 'Recurso ya robado'
+        : isMyTurn
+          ? '1 recurso por turno'
+          : 'Espera tu turno';
 
   return (
-    <div className="flex shrink-0 items-center gap-3 px-2 py-1">
-      <Panel cut={8} className="shrink-0" innerClassName="flex items-center gap-3 px-2.5 py-1.5">
-        <CardStack count={sharedCount} width={54} label="Recursos" />
-        <div className="flex flex-col gap-1">
-          <div>
-            <p className="hud-title text-[9px]">Mazo compartido</p>
-            <p className="hud-sub tabular text-[9px]">{sharedCount}/15</p>
-          </div>
-          <button
-            type="button"
-            className="btn btn--sm btn--primary"
-            onClick={onDrawResource}
-            disabled={!canAct || !canDrawResource}
-            title="Roba una carta de recurso a tu Zona de Recursos"
+    <div className="hud flex shrink-0 items-center gap-3 px-3 py-1.5" style={{ ['--cut' as string]: '8px' }}>
+      <div className="hud__inner flex w-full items-center gap-3">
+        {/* Turno + fase */}
+        <div className="flex items-baseline gap-1.5">
+          <span className="hud-title tabular text-[11px]">Turno {turn}</span>
+          <span
+            className="hud-sub text-[10px]"
+            style={{ color: isMyTurn ? 'var(--color-signal)' : undefined }}
           >
-            ⟳ Robar recurso
-          </button>
-          <span className="hud-sub text-[8px]">{resourceHint}</span>
+            {current}
+          </span>
         </div>
-      </Panel>
 
-      <button
-        type="button"
-        className="btn btn--sm"
-        onClick={onSpawnToken}
-        disabled={!canAct || !isMyTurn}
-      >
-        Tokens
-      </button>
+        <span className="h-4 w-px bg-[var(--color-stroke-faint)]" />
 
-      <span className="h-px flex-1 bg-[var(--color-stroke-faint)]" />
+        {/* Avanzar fase */}
+        <button
+          type="button"
+          className="btn btn--sm btn--primary min-w-[104px]"
+          onClick={onAdvancePhase}
+          disabled={!canAct || Boolean(gameOverText) || (!isMyTurn && Boolean(phase))}
+          title={PHASES.join(' → ')}
+        >
+          {label}
+        </button>
 
-      <button
-        type="button"
-        className="btn btn--primary min-w-[180px]"
-        onClick={onAdvancePhase}
-        disabled={!canAct || Boolean(gameOverText) || (!isMyTurn && Boolean(phase))}
-        title={PHASES.join(' → ')}
-      >
-        <span className="block text-[10px] tracking-widest">Turno {turn} · {current}</span>
-        <span className="block text-[11px]">{label}</span>
-      </button>
+        {/* Recurso compartido */}
+        <button
+          type="button"
+          className="btn btn--sm"
+          onClick={onDrawResource}
+          disabled={!canAct || !canDrawResource}
+          title="Roba una carta de recurso a tu Zona de Recursos (1 por turno)"
+        >
+          ⟳ Recurso
+        </button>
+        <span className="hud-sub tabular text-[10px]">{sharedCount}/15</span>
 
-      <span className="h-px flex-1 bg-[var(--color-stroke-faint)]" />
+        {/* Tokens */}
+        <button
+          type="button"
+          className="btn btn--sm"
+          onClick={onSpawnToken}
+          disabled={!canAct || !isMyTurn}
+          title="Despliega un dron token en tu Zona de Batalla"
+        >
+          Token
+        </button>
 
-      {gameOverText ? (
-        <span className="hud-sub text-[var(--color-heat-max)]">{gameOverText}</span>
-      ) : (
-        <span className="hud-sub text-[9px]">{isMyTurn ? 'Tu iniciativa' : 'Iniciativa rival'}</span>
-      )}
+        <span className="hud-sub text-[9px] opacity-70">{resourceHint}</span>
+
+        {/* Iniciativa */}
+        <span className="ml-auto shrink-0 text-[10px]">
+          {gameOverText ? (
+            <span className="hud-sub text-[var(--color-heat-max)]">{gameOverText}</span>
+          ) : (
+            <span
+              className="hud-sub"
+              style={{ color: isMyTurn ? 'var(--color-signal)' : undefined }}
+            >
+              {isMyTurn ? '● Tu iniciativa' : 'Iniciativa rival'}
+            </span>
+          )}
+        </span>
+      </div>
     </div>
   );
 }

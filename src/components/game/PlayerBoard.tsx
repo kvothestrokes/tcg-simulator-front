@@ -10,7 +10,13 @@
  *
  * En el rival (mirrored) el riel va arriba y la batalla abajo, para que las dos
  * zonas de batalla queden pegadas a la franja central.
+ *
+ * Las cartas de la batalla se DIMENSIONAN para caber: medimos la banda con un
+ * ResizeObserver y calculamos el ancho de carta a partir del alto y del ancho
+ * disponibles, así nunca hace falta scroll ni se recorta una carta.
  */
+
+import { useEffect, useRef, useState } from 'react';
 
 import { CardStack, CardTile } from './CardTile';
 import { Zone } from './Zone';
@@ -19,6 +25,7 @@ import { setDragPayload } from './dnd';
 import { Meter, Stepper } from '../ui/Meter';
 import { PanelSection } from '../ui/Panel';
 import { StatusDot } from '../ui/StatusDot';
+import { CARD_SIZE_PORTRAIT } from '../../lib/card/getCardTypeFields';
 import {
   BATTLE_SLOTS,
   cardsInZone,
@@ -33,6 +40,7 @@ import {
   damageOn,
   effectiveAttack,
   effectiveDefense,
+  isRootShip,
   readyResources,
   shipInSlot,
 } from '../../lib/game/rules';
@@ -60,6 +68,28 @@ interface PlayerBoardProps {
   onAttackTarget?: (card: CardInstance) => void;
 }
 
+/** Mide un elemento con ResizeObserver (solo lectura, sin efectos de juego). */
+function useElementSize<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver((entries) => {
+      const box = entries[0]?.contentRect;
+      if (box) setSize({ width: box.width, height: box.height });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, size] as const;
+}
+
+const PORTRAIT_RATIO = CARD_SIZE_PORTRAIT.h / CARD_SIZE_PORTRAIT.w;
+const BATTLE_GAP = 6;
+const CELL_PADDING = 10;
+const STAT_HEIGHT = 16;
+
 export function PlayerBoard({
   player,
   label,
@@ -84,10 +114,22 @@ export function PlayerBoard({
 }: PlayerBoardProps) {
   const isTarget = (zone: ZoneId) => targetZones.includes(zone);
 
-  const railCard = Math.round(cardWidth * 0.52);
-  const stationW = Math.round(cardWidth * 1.05);
-  const voidW = Math.round(cardWidth * 0.62);
-  const battleW = cardWidth;
+  const [battleRef, battleSize] = useElementSize<HTMLDivElement>();
+
+  // Ancho de carta de batalla que garantiza que 8 quepan a lo ancho y que la
+  // carta (más su renglón de stats) quepa a lo alto. Se acota a cardWidth para
+  // que en pantallas grandes no se agiganten.
+  const byWidth =
+    battleSize.width > 0
+      ? (battleSize.width - BATTLE_GAP * (BATTLE_SLOTS - 1)) / BATTLE_SLOTS - CELL_PADDING
+      : cardWidth;
+  const byHeight =
+    battleSize.height > 0 ? (battleSize.height - STAT_HEIGHT - 8) / PORTRAIT_RATIO : cardWidth;
+  const battleW = Math.max(40, Math.min(cardWidth, Math.floor(Math.min(byWidth, byHeight))));
+
+  const railCard = Math.round(cardWidth * 0.46);
+  const stationW = Math.round(cardWidth * 1.0);
+  const voidW = Math.round(cardWidth * 0.5);
 
   const renderCard = (card: CardInstance, width: number) => (
     <CardTile
@@ -115,6 +157,7 @@ export function PlayerBoard({
   );
 
   const zoneCards = (zone: ZoneId) => cardsInZone(player, zone);
+  const battleCards = zoneCards('battle');
   const voidCards = zoneCards('void');
   const topOfVoid = voidCards[voidCards.length - 1];
   const station = zoneCards('station').filter((c) => c.def.tipo === 'Estación');
@@ -123,40 +166,56 @@ export function PlayerBoard({
   const heat = player?.heat ?? 0;
   const overheated = heat >= HEAT_THRESHOLD;
 
+  // Ocupante de un hueco: la nave raíz si la hay, o cualquier carta suelta que
+  // se haya movido a ese hueco (estación, piloto, etc.). Así NUNCA desaparece
+  // una carta al soltarla en la batalla.
+  const occupantInSlot = (slot: number): CardInstance | undefined =>
+    shipInSlot(player, slot) ??
+    battleCards.find((card) => !card.attachedTo && card.slot === slot && !isRootShip(card));
+
   const battle = (
     <PanelSection
       title="Zona de Batalla"
       titleSize="sm"
       cut={10}
       tone={active ? 'active' : 'default'}
-      meta={zoneCards('battle').filter((c) => !c.attachedTo && c.def.tipo === 'Nave').length || undefined}
+      meta={battleCards.filter((c) => !c.attachedTo && c.def.tipo === 'Nave').length || undefined}
       className="min-h-0 flex-1"
       bodyClassName="min-h-0"
     >
-      <div className="grid h-full min-h-0 grid-cols-8 gap-1.5 overflow-auto p-1.5">
+      <div
+        ref={battleRef}
+        className="grid h-full min-h-0 grid-cols-8 gap-1.5 overflow-hidden p-1.5"
+      >
         {Array.from({ length: BATTLE_SLOTS }, (_, slot) => {
-          const ship = shipInSlot(player, slot);
-          const links = ship ? attachedTo(player, ship.uid) : [];
+          const occ = occupantInSlot(slot);
+          const isShip = Boolean(occ && occ.def.tipo === 'Nave' && !occ.attachedTo);
+          const links = isShip && occ ? attachedTo(player, occ.uid) : [];
           return (
             <Zone
               key={slot}
               zone="battle"
               droppable={isOwner}
+              overflow="overflow-hidden"
               highlighted={isTarget('battle')}
               onDropCard={(payload) => onDropCard(payload, 'battle', slot)}
               onClick={() => onZoneClick('battle', slot)}
               className="flex min-h-0 flex-col items-center justify-center gap-0.5 p-1"
-              emptyHint={ship ? undefined : `${slot + 1}`}
+              emptyHint={occ ? undefined : `${slot + 1}`}
             >
-              {ship ? (
+              {occ ? (
                 <>
-                  {renderCard(ship, battleW)}
-                  <span className="hud-sub tabular text-[8px]">
-                    {effectiveAttack(player, ship)}/{effectiveDefense(player, ship)}
-                    {damageOn(ship) ? ` · dmg ${damageOn(ship)}` : ''}
-                    {ship.isToken ? ' · TKN' : ''}
-                  </span>
-                  {hoverUid === ship.uid && links.length > 0 ? (
+                  {renderCard(occ, battleW)}
+                  {isShip ? (
+                    <span className="hud-sub tabular text-[8px]">
+                      {effectiveAttack(player, occ)}/{effectiveDefense(player, occ)}
+                      {damageOn(occ) ? ` · dmg ${damageOn(occ)}` : ''}
+                      {occ.isToken ? ' · TKN' : ''}
+                    </span>
+                  ) : damageOn(occ) ? (
+                    <span className="hud-sub tabular text-[8px]">dmg {damageOn(occ)}</span>
+                  ) : null}
+                  {hoverUid === occ.uid && links.length > 0 ? (
                     <span className="hud-sub text-[7px] leading-tight">
                       {links.map((c) => c.def.nombre).join(' · ')}
                     </span>
@@ -183,6 +242,7 @@ export function PlayerBoard({
         <Zone
           zone="station"
           droppable={isOwner}
+          overflow="overflow-hidden"
           highlighted={isTarget('station') || Boolean(attackSourceUid && !isOwner)}
           onDropCard={onDropCard}
           onClick={() => {
@@ -193,7 +253,7 @@ export function PlayerBoard({
             }
             onZoneClick('station');
           }}
-          className="flex h-full items-center justify-center gap-1 overflow-auto p-1"
+          className="flex h-full items-center justify-center gap-1 p-1"
           emptyHint={station.length === 0 ? 'Estación' : undefined}
         >
           {station.map((card) => (
@@ -219,10 +279,11 @@ export function PlayerBoard({
         <Zone
           zone="pilots"
           droppable={isOwner}
+          overflow="overflow-x-auto overflow-y-hidden"
           highlighted={isTarget('pilots')}
           onDropCard={onDropCard}
           onClick={() => onZoneClick('pilots')}
-          className="flex h-full items-center gap-1 overflow-x-auto p-1"
+          className="flex h-full items-center gap-1 p-1"
           emptyHint={reservePilots.length === 0 ? 'Reserva de pilotos' : undefined}
         >
           {reservePilots.map((card) => (
@@ -244,10 +305,11 @@ export function PlayerBoard({
         <Zone
           zone="resources"
           droppable={isOwner}
+          overflow="overflow-x-auto overflow-y-hidden"
           highlighted={isTarget('resources')}
           onDropCard={onDropCard}
           onClick={() => onZoneClick('resources')}
-          className="flex h-full items-center gap-1 overflow-x-auto p-1"
+          className="flex h-full items-center gap-1 p-1"
           emptyHint={resources.length === 0 ? 'Roba del mazo compartido' : undefined}
         >
           {resources.map((card) => (
@@ -307,6 +369,7 @@ export function PlayerBoard({
         <Zone
           zone="void"
           droppable={isOwner}
+          overflow="overflow-hidden"
           highlighted={isTarget('void')}
           onDropCard={onDropCard}
           onClick={() => (onVoidClick && voidCards.length ? onVoidClick() : onZoneClick('void'))}
@@ -346,6 +409,7 @@ export function PlayerBoard({
         <Zone
           zone="deck"
           droppable={isOwner}
+          overflow="overflow-hidden"
           highlighted={isTarget('deck')}
           onDropCard={onDropCard}
           className="flex h-full items-center justify-center p-1"
