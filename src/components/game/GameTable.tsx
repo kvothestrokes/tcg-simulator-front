@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { CardInspector, type Selection } from './CardInspector';
+import { CardHoverZoom } from './CardHoverZoom';
 import { CardViewerModal } from './CardViewerModal';
 import { CardContextMenu, type ContextMenuState } from './CardContextMenu';
 import { CenterStrip } from './CenterStrip';
@@ -53,11 +54,24 @@ export function GameTable() {
 
   const [selection, setSelection] = useState<Selection>(null);
   const [hoverCard, setHoverCard] = useState<CardInstance | null>(null);
+  const [zoomCard, setZoomCard] = useState<CardInstance | null>(null);
   const [handCollapsed, setHandCollapsed] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
   const [attackSourceUid, setAttackSourceUid] = useState<string | undefined>();
+
+  // Zoom flotante: aparece tras un instante de hover para no parpadear al
+  // barrer el tablero, y se apaga en cuanto sueltas la carta.
+  useEffect(() => {
+    if (!hoverCard) {
+      setZoomCard(null);
+      return;
+    }
+    const timer = window.setTimeout(() => setZoomCard(hoverCard), 220);
+    return () => window.clearTimeout(timer);
+  }, [hoverCard]);
 
   useEffect(() => {
     if (sessionLoading || identity) return;
@@ -191,6 +205,14 @@ export function GameTable() {
   }, [selection]);
 
   const isMyTurn = !state.activePlayerId || state.activePlayerId === identity?.userId;
+
+  const resourceDrawnThisTurn = me?.lastResourceDrawTurn === state.turn;
+  const canDrawResource =
+    canAct && isMyTurn && state.sharedResourceDeckCount > 0 && !resourceDrawnThisTurn;
+  const drawSharedResource = useCallback(() => {
+    if (!canAct || !isMyTurn || state.sharedResourceDeckCount <= 0) return;
+    actions.drawSharedResource();
+  }, [actions, canAct, isMyTurn, state.sharedResourceDeckCount]);
 
   const nextPhase = useCallback(() => {
     if (!canAct || !identity?.userId) return;
@@ -338,8 +360,11 @@ export function GameTable() {
             turn={state.turn}
             isMyTurn={isMyTurn}
             canAct={canAct}
+            canDrawResource={canDrawResource}
+            resourceDrawnThisTurn={resourceDrawnThisTurn}
             gameOverText={gameOverText}
             onAdvancePhase={nextPhase}
+            onDrawResource={drawSharedResource}
             onSpawnToken={spawnToken}
           />
 
@@ -365,7 +390,18 @@ export function GameTable() {
           />
         </div>
 
-        <aside className="flex min-h-0 w-[360px] shrink-0 flex-col gap-1.5 overflow-y-auto p-2 pl-0">
+        <button
+          type="button"
+          className="hud-sub flex w-5 shrink-0 items-center justify-center border-l border-[var(--color-stroke-faint)] hover:bg-[rgba(255,255,255,0.04)]"
+          onClick={() => setSidebarOpen((open) => !open)}
+          title={sidebarOpen ? 'Ocultar panel lateral' : 'Mostrar panel lateral'}
+          aria-label={sidebarOpen ? 'Ocultar panel lateral' : 'Mostrar panel lateral'}
+        >
+          {sidebarOpen ? '▸' : '◂'}
+        </button>
+
+        {sidebarOpen ? (
+        <aside className="flex min-h-0 w-[340px] shrink-0 flex-col gap-1.5 overflow-y-auto p-2 pl-0">
           <Panel cut={10} className="shrink-0" innerClassName="p-2.5">
             <h3 className="hud-title mb-2 text-[11px]">Mazo</h3>
             {!deckReady ? (
@@ -522,6 +558,7 @@ export function GameTable() {
             disabled={connection !== 'connected'}
           />
         </aside>
+        ) : null}
       </div>
 
       <Hand
@@ -532,6 +569,10 @@ export function GameTable() {
         collapsed={handCollapsed}
         onToggle={() => setHandCollapsed((value) => !value)}
       />
+
+      {zoomCard && !viewerOpen && !discardOpen && !menu ? (
+        <CardHoverZoom def={zoomCard.def} instance={zoomCard} />
+      ) : null}
 
       {viewerOpen && selection ? (
         <CardViewerModal

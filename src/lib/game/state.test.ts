@@ -119,7 +119,7 @@ describe('SETUP de estación', () => {
 });
 
 describe('TURN_START', () => {
-  it('roba, añade un recurso del mazo compartido y enfría 5 CC', () => {
+  it('roba una carta y enfría 5 CC, sin tocar el mazo compartido', () => {
     const next = reduceAll([
       event({
         sequence: 1,
@@ -130,7 +130,7 @@ describe('TURN_START', () => {
       event({
         sequence: 3,
         type: GameEventType.TurnStart,
-        data: { turn: 1, activePlayerId: 'user-1', resourceUid: 'res-a' },
+        data: { turn: 1, activePlayerId: 'user-1' },
       }),
     ]);
     const player = next.players['user-1']!;
@@ -138,10 +138,8 @@ describe('TURN_START', () => {
     expect(player.deckCount).toBe(39);
     expect(player.handCount).toBe(1);
     expect(player.heat).toBe(2);
-    expect(next.sharedResourceDeckCount).toBe(14);
-    expect(player.cards['res-a']?.def.id).toBe(SHARED_RESOURCE_DEF.id);
-    expect(player.cards['res-a']?.zone).toBe('resources');
-    expect(player.cards['res-a']?.tapped).toBe(false);
+    // El recurso compartido ya no es automático: se roba a mano (RESOURCE_DRAW).
+    expect(next.sharedResourceDeckCount).toBe(SHARED_RESOURCE_DECK_SIZE);
   });
 
   it('declara derrota por deck-out si el mazo está vacío', () => {
@@ -167,6 +165,57 @@ describe('TURN_START', () => {
     expect(next.status).toBe('finished');
     expect(next.endReason).toBe('deck_out');
     expect(next.winnerId).toBe('user-2');
+  });
+});
+
+describe('RESOURCE_DRAW', () => {
+  const setup = () =>
+    event({
+      sequence: 1,
+      type: GameEventType.Setup,
+      data: { deckCount: 40, station: getStarterStation() },
+    });
+
+  it('lleva una carta del mazo compartido a la zona de recursos', () => {
+    const next = reduceAll([
+      setup(),
+      event({ sequence: 2, type: GameEventType.TurnStart, data: { turn: 1, activePlayerId: 'user-1' } }),
+      event({ sequence: 3, type: GameEventType.ResourceDraw, data: { uid: 'res-a' } }),
+    ]);
+    const player = next.players['user-1']!;
+    expect(next.sharedResourceDeckCount).toBe(SHARED_RESOURCE_DECK_SIZE - 1);
+    expect(player.cards['res-a']?.def.id).toBe(SHARED_RESOURCE_DEF.id);
+    expect(player.cards['res-a']?.zone).toBe('resources');
+    expect(player.resourcePoints).toBe(1);
+    expect(player.lastResourceDrawTurn).toBe(1);
+  });
+
+  it('ignora un segundo robo en el mismo turno', () => {
+    const next = reduceAll([
+      setup(),
+      event({ sequence: 2, type: GameEventType.TurnStart, data: { turn: 1, activePlayerId: 'user-1' } }),
+      event({ sequence: 3, type: GameEventType.ResourceDraw, data: { uid: 'res-a' } }),
+      event({ sequence: 4, type: GameEventType.ResourceDraw, data: { uid: 'res-b' } }),
+    ]);
+    const player = next.players['user-1']!;
+    expect(next.sharedResourceDeckCount).toBe(SHARED_RESOURCE_DECK_SIZE - 1);
+    expect(player.cards['res-b']).toBeUndefined();
+    expect(player.resourcePoints).toBe(1);
+  });
+
+  it('vuelve a permitir robar cuando avanza el turno', () => {
+    const next = reduceAll([
+      setup(),
+      event({ sequence: 2, type: GameEventType.TurnStart, data: { turn: 1, activePlayerId: 'user-1' } }),
+      event({ sequence: 3, type: GameEventType.ResourceDraw, data: { uid: 'res-a' } }),
+      event({ sequence: 4, type: GameEventType.TurnStart, data: { turn: 2, activePlayerId: 'user-1' } }),
+      event({ sequence: 5, type: GameEventType.ResourceDraw, data: { uid: 'res-b' } }),
+    ]);
+    const player = next.players['user-1']!;
+    expect(next.sharedResourceDeckCount).toBe(SHARED_RESOURCE_DECK_SIZE - 2);
+    expect(player.cards['res-b']?.zone).toBe('resources');
+    expect(player.resourcePoints).toBe(2);
+    expect(player.lastResourceDrawTurn).toBe(2);
   });
 });
 

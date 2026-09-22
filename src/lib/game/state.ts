@@ -28,6 +28,7 @@ import {
   type PlayData,
   type RemoveData,
   type ResourceData,
+  type ResourceDrawData,
   type SetupData,
   type ShuffleData,
   type TapData,
@@ -427,31 +428,45 @@ export function applyEvent(state: GameState, event: WireEvent): GameState {
         handCount: p.handCount + 1,
         heat: Math.max(0, p.heat - HEAT_COOLDOWN),
       }));
-      if (next.sharedResourceDeckCount > 0) {
-        next.sharedResourceDeckCount -= 1;
-        const resourceUid = d.resourceUid ?? `res:${activeId}:${next.turn}:${event.sequence}`;
-        withPlayer(next, activeId, event.seat ?? 1, (p) => ({
-          ...p,
-          cards: {
-            ...p.cards,
-            [resourceUid]: {
-              uid: resourceUid,
-              def: SHARED_RESOURCE_DEF,
-              ownerId: activeId,
-              zone: 'resources',
-              faceUp: true,
-              tapped: false,
-              counters: {},
-            },
-          },
-          resourcePoints: p.resourcePoints + 1,
-        }));
-      }
       pushLog(
         next,
         event,
-        `Turno ${next.turn} · Inicial · juega ${name(activeId)} (roba, +1 recurso, −${HEAT_COOLDOWN} CC).`,
+        `Turno ${next.turn} · Inicial · juega ${name(activeId)} (roba, −${HEAT_COOLDOWN} CC).`,
       );
+      break;
+    }
+
+    case GameEventType.ResourceDraw: {
+      const d = data as unknown as ResourceDrawData;
+      if (!actorId || !d?.uid) break;
+      if (next.sharedResourceDeckCount <= 0) {
+        pushLog(next, event, `${name(actorId)} no pudo robar recurso: mazo compartido agotado.`);
+        break;
+      }
+      const player = next.players[actorId];
+      if (player?.lastResourceDrawTurn === next.turn) {
+        pushLog(next, event, `${name(actorId)} ya robó un recurso este turno.`);
+        break;
+      }
+      next.sharedResourceDeckCount -= 1;
+      withPlayer(next, actorId, event.seat ?? 1, (p) => ({
+        ...p,
+        cards: {
+          ...p.cards,
+          [d.uid]: {
+            uid: d.uid,
+            def: SHARED_RESOURCE_DEF,
+            ownerId: actorId,
+            zone: 'resources',
+            faceUp: true,
+            tapped: false,
+            counters: {},
+          },
+        },
+        resourcePoints: p.resourcePoints + 1,
+        lastResourceDrawTurn: next.turn,
+      }));
+      pushLog(next, event, `${name(actorId)} robó un recurso del mazo compartido.`);
       break;
     }
 

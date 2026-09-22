@@ -1,20 +1,29 @@
 /**
- * Mitad del tablero de un jugador (reglamento 2.4):
+ * Mitad del tablero de un jugador (reglamento 2.4).
  *
- *   ESTACIÓN + PILOTOS │ BATALLA (8 ranuras) │ VACÍO
- *                      │ RECURSOS + HEAT     │ MAZO
+ * La Zona de Batalla es la principal, así que ocupa TODA la banda flexible
+ * (flex-1) y nunca se colapsa. El resto de zonas —estación, pilotos, recursos,
+ * calor, vacío y mazo— viven en un riel compacto de altura fija.
+ *
+ *   ┌ RIEL: estación · pilotos · recursos · calor · vacío · mazo ┐
+ *   └ ZONA DE BATALLA (8 ranuras en una fila) — domina el alto ──┘
+ *
+ * En el rival (mirrored) el riel va arriba y la batalla abajo, para que las dos
+ * zonas de batalla queden pegadas a la franja central.
  */
 
 import { CardStack, CardTile } from './CardTile';
-import { HeatGauge } from './HeatGauge';
 import { Zone } from './Zone';
 import type { DragPayload } from './dnd';
 import { setDragPayload } from './dnd';
+import { Meter, Stepper } from '../ui/Meter';
 import { PanelSection } from '../ui/Panel';
 import { StatusDot } from '../ui/StatusDot';
 import {
   BATTLE_SLOTS,
   cardsInZone,
+  HEAT_MAX,
+  HEAT_THRESHOLD,
   type CardInstance,
   type PlayerState,
   type ZoneId,
@@ -73,21 +82,19 @@ export function PlayerBoard({
   onVoidClick,
   onAttackTarget,
 }: PlayerBoardProps) {
-  const rowTall = mirrored ? 2 : 1;
-  const rowShort = mirrored ? 1 : 2;
-  const rows = mirrored ? 'auto minmax(0, 1fr)' : 'minmax(0, 1fr) auto';
-
   const isTarget = (zone: ZoneId) => targetZones.includes(zone);
 
-  const tileWidth = (tipo: CardInstance['def']['tipo']) =>
-    tipo === 'Estación' ? Math.round(cardWidth * 1.85) : cardWidth;
+  const railCard = Math.round(cardWidth * 0.52);
+  const stationW = Math.round(cardWidth * 1.05);
+  const voidW = Math.round(cardWidth * 0.62);
+  const battleW = cardWidth;
 
-  const renderCard = (card: CardInstance, width?: number) => (
+  const renderCard = (card: CardInstance, width: number) => (
     <CardTile
       key={card.uid}
       def={card.def}
       instance={card}
-      width={width ?? tileWidth(card.def.tipo)}
+      width={width}
       selected={selectedUid === card.uid}
       draggable={isOwner}
       onClick={() => {
@@ -113,6 +120,246 @@ export function PlayerBoard({
   const station = zoneCards('station').filter((c) => c.def.tipo === 'Estación');
   const reservePilots = zoneCards('pilots');
   const resources = zoneCards('resources');
+  const heat = player?.heat ?? 0;
+  const overheated = heat >= HEAT_THRESHOLD;
+
+  const battle = (
+    <PanelSection
+      title="Zona de Batalla"
+      titleSize="sm"
+      cut={10}
+      tone={active ? 'active' : 'default'}
+      meta={zoneCards('battle').filter((c) => !c.attachedTo && c.def.tipo === 'Nave').length || undefined}
+      className="min-h-0 flex-1"
+      bodyClassName="min-h-0"
+    >
+      <div className="grid h-full min-h-0 grid-cols-8 gap-1.5 overflow-auto p-1.5">
+        {Array.from({ length: BATTLE_SLOTS }, (_, slot) => {
+          const ship = shipInSlot(player, slot);
+          const links = ship ? attachedTo(player, ship.uid) : [];
+          return (
+            <Zone
+              key={slot}
+              zone="battle"
+              droppable={isOwner}
+              highlighted={isTarget('battle')}
+              onDropCard={(payload) => onDropCard(payload, 'battle', slot)}
+              onClick={() => onZoneClick('battle', slot)}
+              className="flex min-h-0 flex-col items-center justify-center gap-0.5 p-1"
+              emptyHint={ship ? undefined : `${slot + 1}`}
+            >
+              {ship ? (
+                <>
+                  {renderCard(ship, battleW)}
+                  <span className="hud-sub tabular text-[8px]">
+                    {effectiveAttack(player, ship)}/{effectiveDefense(player, ship)}
+                    {damageOn(ship) ? ` · dmg ${damageOn(ship)}` : ''}
+                    {ship.isToken ? ' · TKN' : ''}
+                  </span>
+                  {hoverUid === ship.uid && links.length > 0 ? (
+                    <span className="hud-sub text-[7px] leading-tight">
+                      {links.map((c) => c.def.nombre).join(' · ')}
+                    </span>
+                  ) : null}
+                </>
+              ) : null}
+            </Zone>
+          );
+        })}
+      </div>
+    </PanelSection>
+  );
+
+  const rail = (
+    <div className="flex shrink-0 gap-1.5" style={{ height: 112 }}>
+      <PanelSection
+        title="Estación"
+        titleSize="sm"
+        cut={10}
+        className="min-h-0 shrink-0"
+        bodyClassName="min-h-0"
+        style={{ width: Math.max(132, stationW + 24) }}
+      >
+        <Zone
+          zone="station"
+          droppable={isOwner}
+          highlighted={isTarget('station') || Boolean(attackSourceUid && !isOwner)}
+          onDropCard={onDropCard}
+          onClick={() => {
+            const target = station[0];
+            if (attackSourceUid && target && onAttackTarget) {
+              onAttackTarget(target);
+              return;
+            }
+            onZoneClick('station');
+          }}
+          className="flex h-full items-center justify-center gap-1 overflow-auto p-1"
+          emptyHint={station.length === 0 ? 'Estación' : undefined}
+        >
+          {station.map((card) => (
+            <div key={card.uid} className="flex shrink-0 flex-col items-center gap-0.5">
+              {renderCard(card, stationW)}
+              <span className="hud-sub tabular text-[8px]">
+                PV {Math.max(0, (card.def.hp ?? card.def.hp_max ?? 0) - damageOn(card))}/
+                {card.def.hp_max ?? card.def.hp ?? 0}
+              </span>
+            </div>
+          ))}
+        </Zone>
+      </PanelSection>
+
+      <PanelSection
+        title="Pilotos"
+        titleSize="sm"
+        cut={10}
+        meta={reservePilots.length || undefined}
+        className="min-h-0 min-w-0 flex-1"
+        bodyClassName="min-h-0"
+      >
+        <Zone
+          zone="pilots"
+          droppable={isOwner}
+          highlighted={isTarget('pilots')}
+          onDropCard={onDropCard}
+          onClick={() => onZoneClick('pilots')}
+          className="flex h-full items-center gap-1 overflow-x-auto p-1"
+          emptyHint={reservePilots.length === 0 ? 'Reserva de pilotos' : undefined}
+        >
+          {reservePilots.map((card) => (
+            <div key={card.uid} className="shrink-0">
+              {renderCard(card, railCard)}
+            </div>
+          ))}
+        </Zone>
+      </PanelSection>
+
+      <PanelSection
+        title="Recursos"
+        titleSize="sm"
+        cut={10}
+        meta={resources.length ? `${readyResources(player).length}/${resources.length}` : undefined}
+        className="min-h-0 min-w-0 flex-[1.4]"
+        bodyClassName="min-h-0"
+      >
+        <Zone
+          zone="resources"
+          droppable={isOwner}
+          highlighted={isTarget('resources')}
+          onDropCard={onDropCard}
+          onClick={() => onZoneClick('resources')}
+          className="flex h-full items-center gap-1 overflow-x-auto p-1"
+          emptyHint={resources.length === 0 ? 'Roba del mazo compartido' : undefined}
+        >
+          {resources.map((card) => (
+            <div key={card.uid} className="shrink-0">
+              {renderCard(card, railCard)}
+            </div>
+          ))}
+        </Zone>
+      </PanelSection>
+
+      <PanelSection
+        title="Calor"
+        titleSize="sm"
+        cut={10}
+        tone={overheated ? 'danger' : 'default'}
+        meta={
+          <span style={{ color: overheated ? 'var(--color-heat-max)' : 'var(--color-heat)' }}>
+            {heat}/{HEAT_MAX}
+          </span>
+        }
+        className="min-h-0 shrink-0"
+        bodyClassName="min-h-0"
+        style={{ width: 168 }}
+      >
+        <div className="flex h-full flex-col justify-center gap-1.5 p-1">
+          <Meter value={heat} max={HEAT_MAX} threshold={HEAT_THRESHOLD} color="var(--color-heat)" />
+          {isOwner ? (
+            <div className="flex items-center justify-between gap-2">
+              <Stepper value={heat} max={HEAT_MAX} onChange={onHeatChange} label="calor" />
+              <button
+                type="button"
+                className="btn btn--sm btn--ghost"
+                onClick={() => onHeatChange(0)}
+                disabled={heat === 0}
+                title="Disipar todo el calor"
+              >
+                Purgar
+              </button>
+            </div>
+          ) : (
+            <p className="hud-sub text-[9px]">
+              {overheated ? 'Sobrecalentado' : `Umbral ${HEAT_THRESHOLD}`}
+            </p>
+          )}
+        </div>
+      </PanelSection>
+
+      <PanelSection
+        title="Vacío"
+        titleSize="sm"
+        cut={10}
+        meta={voidCards.length || undefined}
+        className="min-h-0 shrink-0"
+        bodyClassName="min-h-0"
+        style={{ width: Math.max(88, voidW + 20) }}
+      >
+        <Zone
+          zone="void"
+          droppable={isOwner}
+          highlighted={isTarget('void')}
+          onDropCard={onDropCard}
+          onClick={() => (onVoidClick && voidCards.length ? onVoidClick() : onZoneClick('void'))}
+          className="flex h-full items-center justify-center p-1"
+        >
+          {topOfVoid ? (
+            <CardTile
+              def={topOfVoid.def}
+              instance={topOfVoid}
+              width={voidW}
+              draggable={isOwner}
+              selected={selectedUid === topOfVoid.uid}
+              onClick={() => onSelectCard(topOfVoid)}
+              onDoubleClick={() => onVoidClick?.()}
+              onContextMenu={(event) => onContextMenuCard?.(topOfVoid, event)}
+              onPointerEnter={() => onHoverCard?.(topOfVoid)}
+              onPointerLeave={() => onHoverCard?.(null)}
+              onDragStart={(event) =>
+                setDragPayload(event, { uid: topOfVoid.uid, source: 'board', from: 'void' })
+              }
+            />
+          ) : (
+            <span className="hud-sub text-[9px] opacity-45">Descarte</span>
+          )}
+        </Zone>
+      </PanelSection>
+
+      <PanelSection
+        title="Mazo"
+        titleSize="sm"
+        cut={10}
+        meta={player?.deckCount ?? 0}
+        className="min-h-0 shrink-0"
+        bodyClassName="min-h-0"
+        style={{ width: Math.max(88, voidW + 20) }}
+      >
+        <Zone
+          zone="deck"
+          droppable={isOwner}
+          highlighted={isTarget('deck')}
+          onDropCard={onDropCard}
+          className="flex h-full items-center justify-center p-1"
+        >
+          <CardStack
+            count={player?.deckCount ?? 0}
+            width={voidW}
+            label="Mazo"
+            onClick={isOwner ? onDeckClick : undefined}
+          />
+        </Zone>
+      </PanelSection>
+    </div>
+  );
 
   return (
     <section
@@ -141,213 +388,17 @@ export function PlayerBoard({
         </span>
       </header>
 
-      <div
-        className="grid min-h-0 flex-1 gap-1.5"
-        style={{ gridTemplateColumns: '220px minmax(0, 1fr) 168px', gridTemplateRows: rows }}
-      >
-        <PanelSection
-          title="Estación & Pilotos"
-          titleSize="sm"
-          cut={10}
-          meta={(station.length + reservePilots.length) || undefined}
-          className="min-h-0"
-          bodyClassName="min-h-0"
-          style={{ gridColumn: 1, gridRow: `1 / span 2` }}
-        >
-          <div className="flex h-full min-h-0 flex-col gap-1.5 overflow-auto p-1">
-            <Zone
-              zone="station"
-              droppable={isOwner}
-              highlighted={isTarget('station') || Boolean(attackSourceUid && !isOwner)}
-              onDropCard={onDropCard}
-              onClick={() => {
-                const target = station[0];
-                if (attackSourceUid && target && onAttackTarget) {
-                  onAttackTarget(target);
-                  return;
-                }
-                onZoneClick('station');
-              }}
-              className="flex min-h-[88px] flex-wrap content-start justify-center gap-1 p-1"
-              emptyHint={station.length === 0 ? 'Estación' : undefined}
-            >
-              {station.map((card) => (
-                <div key={card.uid} className="flex flex-col items-center gap-0.5">
-                  {renderCard(card)}
-                  <span className="hud-sub tabular text-[8px]">
-                    PV {Math.max(0, (card.def.hp ?? card.def.hp_max ?? 0) - damageOn(card))}
-                    /{card.def.hp_max ?? card.def.hp ?? 0}
-                  </span>
-                </div>
-              ))}
-            </Zone>
-            <p className="hud-sub px-1 text-[8px]">Reserva de pilotos</p>
-            <Zone
-              zone="pilots"
-              droppable={isOwner}
-              highlighted={isTarget('pilots')}
-              onDropCard={onDropCard}
-              onClick={() => onZoneClick('pilots')}
-              className="flex min-h-[72px] flex-wrap content-start gap-1 p-1"
-              emptyHint={reservePilots.length === 0 ? 'Sin pilotos en reserva' : undefined}
-            >
-              {reservePilots.map((card) => (
-                <div key={card.uid} className="shrink-0">
-                  {renderCard(card, cardWidth * 0.72)}
-                </div>
-              ))}
-            </Zone>
-          </div>
-        </PanelSection>
-
-        <PanelSection
-          title="Zona de Batalla"
-          titleSize="sm"
-          cut={10}
-          meta={
-            zoneCards('battle').filter((c) => !c.attachedTo && c.def.tipo === 'Nave').length ||
-            undefined
-          }
-          className="min-h-0"
-          bodyClassName="min-h-0"
-          style={{ gridColumn: 2, gridRow: rowTall }}
-        >
-          <div className="grid h-full grid-cols-4 grid-rows-2 gap-1.5 p-1.5">
-            {Array.from({ length: BATTLE_SLOTS }, (_, slot) => {
-              const ship = shipInSlot(player, slot);
-              const links = ship ? attachedTo(player, ship.uid) : [];
-              return (
-                <Zone
-                  key={slot}
-                  zone="battle"
-                  droppable={isOwner}
-                  highlighted={isTarget('battle')}
-                  onDropCard={(payload) => onDropCard(payload, 'battle', slot)}
-                  onClick={() => onZoneClick('battle', slot)}
-                  className="flex min-h-0 flex-col items-center justify-center gap-0.5 p-1"
-                  emptyHint={ship ? undefined : `${slot + 1}`}
-                >
-                  {ship ? (
-                    <>
-                      {renderCard(ship, cardWidth * 0.92)}
-                      <span className="hud-sub tabular text-[8px]">
-                        {effectiveAttack(player, ship)}/{effectiveDefense(player, ship)}
-                        {damageOn(ship) ? ` · dmg ${damageOn(ship)}` : ''}
-                        {ship.isToken ? ' · TKN' : ''}
-                      </span>
-                      {hoverUid === ship.uid && links.length > 0 ? (
-                        <span className="hud-sub text-[7px] leading-tight">
-                          {links.map((c) => c.def.nombre).join(' · ')}
-                        </span>
-                      ) : null}
-                    </>
-                  ) : null}
-                </Zone>
-              );
-            })}
-          </div>
-        </PanelSection>
-
-        <PanelSection
-          title="Vacío"
-          titleSize="sm"
-          cut={10}
-          meta={voidCards.length || undefined}
-          className="min-h-0"
-          bodyClassName="min-h-0"
-          style={{ gridColumn: 3, gridRow: rowTall }}
-        >
-          <Zone
-            zone="void"
-            droppable={isOwner}
-            highlighted={isTarget('void')}
-            onDropCard={onDropCard}
-            onClick={() => (onVoidClick && voidCards.length ? onVoidClick() : onZoneClick('void'))}
-            className="flex h-full items-center justify-center p-1.5"
-          >
-            {topOfVoid ? (
-              <div className="relative">
-                <CardTile
-                  def={topOfVoid.def}
-                  instance={topOfVoid}
-                  width={Math.min(cardWidth, 110)}
-                  draggable={isOwner}
-                  selected={selectedUid === topOfVoid.uid}
-                  onClick={() => onSelectCard(topOfVoid)}
-                  onDoubleClick={() => onVoidClick?.()}
-                  onContextMenu={(event) => onContextMenuCard?.(topOfVoid, event)}
-                  onDragStart={(event) =>
-                    setDragPayload(event, { uid: topOfVoid.uid, source: 'board', from: 'void' })
-                  }
-                />
-                <span className="hud-sub mt-1 block text-center text-[9px]">
-                  {voidCards.length} · click para ver
-                </span>
-              </div>
-            ) : (
-              <span className="hud-sub text-[9px] opacity-45">Pila de descarte</span>
-            )}
-          </Zone>
-        </PanelSection>
-
-        <div className="flex min-w-0 gap-1.5" style={{ gridColumn: 2, gridRow: rowShort }}>
-          <PanelSection
-            title="Zona de Recursos"
-            titleSize="sm"
-            cut={10}
-            meta={resources.length || undefined}
-            className="min-w-0 flex-1"
-            bodyClassName="min-h-0"
-          >
-            <Zone
-              zone="resources"
-              droppable={isOwner}
-              highlighted={isTarget('resources')}
-              onDropCard={onDropCard}
-              onClick={() => onZoneClick('resources')}
-              className="flex h-full items-center gap-1 overflow-x-auto p-1.5"
-              emptyHint={resources.length === 0 ? 'Sin recursos' : undefined}
-            >
-              {resources.map((card) => (
-                <div key={card.uid} className="shrink-0">
-                  {renderCard(card, cardWidth * 0.72)}
-                </div>
-              ))}
-            </Zone>
-          </PanelSection>
-          <div className="w-[168px] shrink-0">
-            <HeatGauge
-              value={player?.heat ?? 0}
-              editable={isOwner}
-              onChange={onHeatChange}
-              compact={!isOwner}
-            />
-          </div>
-        </div>
-
-        <PanelSection
-          title="Mazo"
-          titleSize="sm"
-          cut={10}
-          className="min-h-0"
-          style={{ gridColumn: 3, gridRow: rowShort }}
-        >
-          <Zone
-            zone="deck"
-            droppable={isOwner}
-            highlighted={isTarget('deck')}
-            onDropCard={onDropCard}
-            className="flex h-full items-center justify-center p-1.5"
-          >
-            <CardStack
-              count={player?.deckCount ?? 0}
-              width={cardWidth * 0.82}
-              label="Mazo"
-              onClick={isOwner ? onDeckClick : undefined}
-            />
-          </Zone>
-        </PanelSection>
-      </div>
+      {mirrored ? (
+        <>
+          {rail}
+          {battle}
+        </>
+      ) : (
+        <>
+          {battle}
+          {rail}
+        </>
+      )}
     </section>
   );
 }

@@ -32,6 +32,8 @@ export const GameEventType = {
   Heat: 'HEAT',
   /** Fija los puntos de recurso declarados. */
   Resource: 'RESOURCE',
+  /** Roba una carta del mazo compartido de recursos a la zona de recursos (1/turno). */
+  ResourceDraw: 'RESOURCE_DRAW',
   /** Cambio de fase dentro del turno (Activación / Principal / Final). */
   Phase: 'PHASE',
   /** Inicio de turno: robo, recurso compartido y refrigeración. */
@@ -130,6 +132,11 @@ export interface HeatData {
 
 export interface ResourceData {
   value: number;
+}
+
+export interface ResourceDrawData {
+  /** Uid de la carta de recurso que sale del mazo compartido. */
+  uid: string;
 }
 
 export interface PhaseData {

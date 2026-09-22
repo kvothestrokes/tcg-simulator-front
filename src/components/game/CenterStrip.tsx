@@ -8,8 +8,13 @@ interface CenterStripProps {
   turn: number;
   isMyTurn: boolean;
   canAct: boolean;
+  /** Puedes robar del mazo compartido: es tu turno, queda mazo y no robaste aún. */
+  canDrawResource: boolean;
+  /** Ya usaste tu robo de recurso este turno. */
+  resourceDrawnThisTurn: boolean;
   gameOverText?: string;
   onAdvancePhase: () => void;
+  onDrawResource: () => void;
   onSpawnToken: () => void;
 }
 
@@ -26,8 +31,11 @@ export function CenterStrip({
   turn,
   isMyTurn,
   canAct,
+  canDrawResource,
+  resourceDrawnThisTurn,
   gameOverText,
   onAdvancePhase,
+  onDrawResource,
   onSpawnToken,
 }: CenterStripProps) {
   const current = normalizePhase(phase);
@@ -39,13 +47,33 @@ export function CenterStrip({
         ? 'Relevar turno'
         : `Fase ${NEXT_LABEL[current]}`;
 
+  const resourceHint = sharedCount <= 0
+    ? 'Mazo agotado'
+    : resourceDrawnThisTurn
+      ? 'Ya robaste este turno'
+      : isMyTurn
+        ? '1 por turno'
+        : 'Espera tu turno';
+
   return (
     <div className="flex shrink-0 items-center gap-3 px-2 py-1">
-      <Panel cut={8} className="shrink-0" innerClassName="flex items-center gap-3 px-2 py-1.5">
-        <CardStack count={sharedCount} width={56} label="Recursos" />
-        <div>
-          <p className="hud-title text-[9px]">Mazo compartido</p>
-          <p className="hud-sub tabular text-[9px]">{sharedCount}/15</p>
+      <Panel cut={8} className="shrink-0" innerClassName="flex items-center gap-3 px-2.5 py-1.5">
+        <CardStack count={sharedCount} width={54} label="Recursos" />
+        <div className="flex flex-col gap-1">
+          <div>
+            <p className="hud-title text-[9px]">Mazo compartido</p>
+            <p className="hud-sub tabular text-[9px]">{sharedCount}/15</p>
+          </div>
+          <button
+            type="button"
+            className="btn btn--sm btn--primary"
+            onClick={onDrawResource}
+            disabled={!canAct || !canDrawResource}
+            title="Roba una carta de recurso a tu Zona de Recursos"
+          >
+            ⟳ Robar recurso
+          </button>
+          <span className="hud-sub text-[8px]">{resourceHint}</span>
         </div>
       </Panel>
 

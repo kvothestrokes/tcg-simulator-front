@@ -140,6 +140,8 @@ export interface PlayerState {
   heat: number;
   resourcePoints: number;
   ready: boolean;
+  /** Turno en el que el jugador robó del mazo compartido (regla: 1 por turno). */
+  lastResourceDrawTurn?: number;
 }
 
 export interface LogEntry {

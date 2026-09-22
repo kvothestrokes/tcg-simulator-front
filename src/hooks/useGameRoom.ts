@@ -72,6 +72,8 @@ export interface GameActions {
   setCounter: (uid: string, key: string, value: number) => void;
   setHeat: (value: number) => void;
   setResources: (value: number) => void;
+  /** Roba una carta del mazo compartido de recursos a tu zona de recursos (1/turno). */
+  drawSharedResource: () => void;
   setPhase: (phase: string, turn: number, activePlayerId?: string) => void;
   startTurn: (turn: number, activePlayerId: string) => void;
   linkCard: (childUid: string, parentUid: string) => void;
@@ -266,6 +268,8 @@ export function useGameRoom({ roomCode, userId, onEvent }: UseGameRoomOptions): 
 
       setResources: (value) =>
         declare(GameEventType.Resource, { value: clamp(value, 0, RESOURCE_MAX) }),
+
+      drawSharedResource: () => declare(GameEventType.ResourceDraw, { uid: randomUuid() }),
 
       setPhase: (phase, turn, activePlayerId) =>
         declare(GameEventType.Phase, { phase, turn, activePlayerId }),
