@@ -13,7 +13,9 @@
 
 import {
   GameEventType,
+  REVEAL_ROUTES,
   ServerEventType,
+  type ActivateOrderData,
   type AttackData,
   type CounterData,
   type DestroyData,
@@ -29,12 +31,15 @@ import {
   type RemoveData,
   type ResourceData,
   type ResourceDrawData,
+  type RevealData,
+  type RevealResolveData,
   type SetupData,
   type ShuffleData,
   type TapData,
   type ToDeckData,
   type ToHandData,
   type TokenSpawnData,
+  type TopCardData,
   type TurnStartData,
   type UnlinkData,
 } from './events';
@@ -43,6 +48,7 @@ import {
   DAMAGE_COUNTER,
   emptyPlayer,
   emptyState,
+  EXTRA_DRAW_HEAT,
   HEAT_COOLDOWN,
   HEAT_MAX,
   normalizePhase,
@@ -50,6 +56,7 @@ import {
   RESOURCE_MAX,
   SHARED_RESOURCE_DECK_SIZE,
   ZONE_LABEL,
+  type CardDef,
   type CardInstance,
   type GameState,
   type LogEntry,
@@ -60,9 +67,14 @@ import { stationUid } from './cards';
 import {
   attachedTo,
   canLinkTo,
+  costBlock,
   damageOn,
+  deckActionBlock,
   effectiveAttack,
   effectiveDefense,
+  payCost,
+  playPaysCost,
+  recycleDestination,
   SHARED_RESOURCE_DEF,
   stationHp,
   TOKEN_DRONE_DEF,
@@ -88,6 +100,14 @@ export function applyEvent(state: GameState, event: WireEvent): GameState {
   const next: GameState = { ...state, lastSequence: event.sequence };
   const data = (event.data ?? {}) as Record<string, unknown>;
   const actorId = event.playerId;
+
+  // Rule checks run against the state BEFORE the event, the same one the
+  // private deck uses to decide whether to move its cards (usePrivateDeck).
+  const rejected = rejectionReason(state, event);
+  if (rejected) {
+    pushLog(next, event, `${name(actorId)} no pudo ${rejectedVerb(event.type, data)}: ${rejected}`);
+    return next;
+  }
 
   switch (event.type) {
     // --- eventos del servidor ------------------------------------------------
@@ -125,6 +145,8 @@ export function applyEvent(state: GameState, event: WireEvent): GameState {
     case GameEventType.Setup: {
       const d = data as unknown as SetupData;
       if (!actorId) break;
+      const deckCount = clamp(d.deckCount ?? 0, 0, 999);
+      const opening = Math.min(deckCount, clamp(d.openingHand ?? 0, 0, 20));
       withPlayer(next, actorId, event.seat ?? 1, (p) => {
         const cards: Record<string, CardInstance> = {};
         if (d.station) {
@@ -141,20 +163,21 @@ export function applyEvent(state: GameState, event: WireEvent): GameState {
         }
         return {
           ...p,
-          deckCount: clamp(d.deckCount ?? 0, 0, 999),
-          handCount: 0,
+          deckCount: deckCount - opening,
+          handCount: opening,
           cards,
           heat: 0,
           resourcePoints: 0,
           ready: true,
         };
       });
+      const openingText = opening > 0 ? `, robó ${opening} carta${opening === 1 ? '' : 's'}` : '';
       pushLog(
         next,
         event,
         d.station
-          ? `${name(actorId)} preparó su mazo (${d.deckCount ?? 0} cartas) y desplegó ${d.station.nombre}.`
-          : `${name(actorId)} preparó su mazo (${d.deckCount ?? 0} cartas).`,
+          ? `${name(actorId)} preparó su mazo (${deckCount} cartas)${openingText} y desplegó ${d.station.nombre}.`
+          : `${name(actorId)} preparó su mazo (${deckCount} cartas)${openingText}.`,
       );
       break;
     }
@@ -165,7 +188,9 @@ export function applyEvent(state: GameState, event: WireEvent): GameState {
       const player = next.players[actorId];
       const wanted = clamp(d.count ?? 1, 1, 20);
       if (player && player.deckCount <= 0) {
-        markGameOver(next, opponentId(next, actorId), 'deck_out', actorId);
+        // Deck-out only loses from turn 2 on: on turn 1 the deck may simply
+        // not be prepared yet.
+        if (next.turn > 1) markGameOver(next, opponentId(next, actorId), 'deck_out', actorId);
         pushLog(next, event, `${name(actorId)} no pudo robar: mazo agotado.`);
         break;
       }
@@ -193,6 +218,7 @@ export function applyEvent(state: GameState, event: WireEvent): GameState {
     case GameEventType.Play: {
       const d = data as unknown as PlayData;
       if (!actorId || !d?.uid || !d?.def) break;
+      const charged = Boolean(d.payCost) && playPaysCost(d);
       withPlayer(next, actorId, event.seat ?? 1, (p) => {
         const card: CardInstance = {
           uid: d.uid,
@@ -206,20 +232,114 @@ export function applyEvent(state: GameState, event: WireEvent): GameState {
           tapped: false,
           counters: {},
         };
+        const paid = charged ? payCost(p, d.def) : p;
         return {
-          ...p,
-          cards: { ...p.cards, [d.uid]: card },
+          ...paid,
+          cards: { ...paid.cards, [d.uid]: card },
           handCount: d.from === 'hand' ? Math.max(0, p.handCount - 1) : p.handCount,
           deckCount: d.from === 'deck' ? Math.max(0, p.deckCount - 1) : p.deckCount,
         };
       });
+      const costText = charged ? costSuffix(d.def) : '';
       pushLog(
         next,
         event,
         d.faceUp === false
-          ? `${name(actorId)} colocó una carta boca abajo en ${ZONE_LABEL[d.to]}.`
-          : `${name(actorId)} jugó ${d.def.nombre} (${CARD_TYPE_LABEL[d.def.tipo]}) en ${ZONE_LABEL[d.to]}.`,
+          ? `${name(actorId)} colocó una carta boca abajo en ${ZONE_LABEL[d.to]}${costText}.`
+          : `${name(actorId)} jugó ${d.def.nombre} (${CARD_TYPE_LABEL[d.def.tipo]}) en ${ZONE_LABEL[d.to]}${costText}.`,
       );
+      break;
+    }
+
+    case GameEventType.ActivateOrder: {
+      const d = data as unknown as ActivateOrderData;
+      if (!actorId) break;
+      withPlayer(next, actorId, event.seat ?? 1, (p) => {
+        const paid = payCost(p, d.def);
+        return {
+          ...paid,
+          cards: { ...paid.cards, [d.uid]: voidCard(d.uid, d.def, actorId) },
+          handCount: Math.max(0, p.handCount - 1),
+        };
+      });
+      pushLog(next, event, `${name(actorId)} activó la orden ${d.def.nombre}${costSuffix(d.def)}.`);
+      break;
+    }
+
+    case GameEventType.ExtraDraw: {
+      if (!actorId) break;
+      const turn = next.turn;
+      withPlayer(next, actorId, event.seat ?? 1, (p) => ({
+        ...p,
+        deckCount: Math.max(0, p.deckCount - 1),
+        handCount: p.handCount + 1,
+        heat: Math.min(HEAT_MAX, p.heat + EXTRA_DRAW_HEAT),
+        lastExtraDrawTurn: turn,
+      }));
+      pushLog(next, event, `${name(actorId)} hizo un Robo Extra (+${EXTRA_DRAW_HEAT} CC).`);
+      break;
+    }
+
+    case GameEventType.Reveal: {
+      const d = data as unknown as RevealData;
+      const count = Number(d.count);
+      pushLog(next, event, `${name(actorId)} revela ${count} carta${count === 1 ? '' : 's'} de su mazo.`);
+      break;
+    }
+
+    case GameEventType.RevealResolve: {
+      const d = data as unknown as RevealResolveData;
+      if (!actorId) break;
+      const tally = { hand: 0, top: 0, bottom: 0, void: 0 };
+      for (const route of d.routes) tally[route] += 1;
+      withPlayer(next, actorId, event.seat ?? 1, (p) => {
+        const cards = { ...p.cards };
+        for (const entry of d.voidCards) cards[entry.uid] = voidCard(entry.uid, entry.def, actorId);
+        return {
+          ...p,
+          cards,
+          deckCount: Math.max(0, p.deckCount - tally.hand - tally.void),
+          handCount: p.handCount + tally.hand,
+        };
+      });
+      const parts = [
+        tally.hand ? `${tally.hand} a la mano` : '',
+        tally.top ? `${tally.top} arriba del mazo` : '',
+        tally.bottom ? `${tally.bottom} al fondo del mazo` : '',
+        tally.void
+          ? `${tally.void} al Vacío (${d.voidCards.map((entry) => entry.def.nombre).join(', ')})`
+          : '',
+      ].filter(Boolean);
+      pushLog(next, event, `${name(actorId)} resolvió la revelación: ${parts.join(', ')}.`);
+      break;
+    }
+
+    case GameEventType.Mill: {
+      const d = data as unknown as TopCardData;
+      if (!actorId) break;
+      withPlayer(next, actorId, event.seat ?? 1, (p) => ({
+        ...p,
+        cards: { ...p.cards, [d.uid]: voidCard(d.uid, d.def, actorId) },
+        deckCount: Math.max(0, p.deckCount - 1),
+      }));
+      pushLog(next, event, `${name(actorId)} molió ${d.def.nombre} al Vacío.`);
+      break;
+    }
+
+    case GameEventType.Recycle: {
+      const d = data as unknown as TopCardData;
+      if (!actorId) break;
+      const zone = recycleDestination(d.def);
+      withPlayer(next, actorId, event.seat ?? 1, (p) => ({
+        ...p,
+        cards: {
+          ...p.cards,
+          // Enters untapped: a recycled Ship or Gear counts as a ready resource.
+          [d.uid]: { ...voidCard(d.uid, d.def, actorId), zone },
+        },
+        deckCount: Math.max(0, p.deckCount - 1),
+      }));
+      pushLog(next, event, `${name(actorId)} recicló ${d.def.nombre} a ${ZONE_LABEL[zone]}.`);
       break;
     }
 
@@ -249,6 +369,8 @@ export function applyEvent(state: GameState, event: WireEvent): GameState {
           faceUp: d.faceUp ?? card.faceUp,
           attachedTo: d.attachedTo === undefined ? card.attachedTo : (d.attachedTo ?? undefined),
           tapped: d.to === 'battle' ? card.tapped : false,
+          // Leaving the board clears counters; moving between board zones keeps them.
+          counters: d.to === 'void' ? {} : card.counters,
         };
         const cards = { ...p.cards, [d.uid]: moved };
         if (card.def.tipo === 'Nave' && !card.attachedTo && d.to === 'battle') {
@@ -417,23 +539,35 @@ export function applyEvent(state: GameState, event: WireEvent): GameState {
       next.turn = clamp(d.turn ?? next.turn, 1, 999);
       next.activePlayerId = activeId;
       const player = next.players[activeId];
-      if (player && player.deckCount <= 0) {
+      // Deck-out only loses from turn 2 on: on turn 1 the deck may simply not
+      // be prepared yet (the old instant-loss bug).
+      if (player && player.deckCount <= 0 && next.turn > 1) {
         markGameOver(next, opponentId(next, activeId), 'deck_out', activeId);
         pushLog(next, event, `${name(activeId)} pierde: no quedan cartas en el mazo.`);
         break;
       }
       // Refresco atómico al entrar en Inicial: se endereza todo, se roba y se
       // enfría, para que el jugador que empieza su turno vea todo listo de una.
+      const draws = (player?.deckCount ?? 0) > 0 ? 1 : 0;
       withPlayer(next, activeId, event.seat ?? 1, (p) => ({
         ...untapPlayer(p),
-        deckCount: Math.max(0, p.deckCount - 1),
-        handCount: p.handCount + 1,
+        deckCount: Math.max(0, p.deckCount - draws),
+        handCount: p.handCount + draws,
         heat: Math.max(0, p.heat - HEAT_COOLDOWN),
       }));
+      const gotResource =
+        Boolean(d.autoResource && d.resourceUid) &&
+        grantSharedResource(next, activeId, d.resourceUid!, event.seat ?? 1);
+      const steps = [
+        'endereza',
+        draws ? 'roba' : 'sin cartas que robar',
+        `−${HEAT_COOLDOWN} CC`,
+        gotResource ? '+1 recurso' : '',
+      ].filter(Boolean);
       pushLog(
         next,
         event,
-        `Turno ${next.turn} · Inicial · juega ${name(activeId)} (endereza, roba, −${HEAT_COOLDOWN} CC).`,
+        `Turno ${next.turn} · Inicial · juega ${name(activeId)} (${steps.join(', ')}).`,
       );
       break;
     }
@@ -445,29 +579,10 @@ export function applyEvent(state: GameState, event: WireEvent): GameState {
         pushLog(next, event, `${name(actorId)} no pudo robar recurso: mazo compartido agotado.`);
         break;
       }
-      const player = next.players[actorId];
-      if (player?.lastResourceDrawTurn === next.turn) {
+      if (!grantSharedResource(next, actorId, d.uid, event.seat ?? 1)) {
         pushLog(next, event, `${name(actorId)} ya robó un recurso este turno.`);
         break;
       }
-      next.sharedResourceDeckCount -= 1;
-      withPlayer(next, actorId, event.seat ?? 1, (p) => ({
-        ...p,
-        cards: {
-          ...p.cards,
-          [d.uid]: {
-            uid: d.uid,
-            def: SHARED_RESOURCE_DEF,
-            ownerId: actorId,
-            zone: 'resources',
-            faceUp: true,
-            tapped: false,
-            counters: {},
-          },
-        },
-        resourcePoints: p.resourcePoints + 1,
-        lastResourceDrawTurn: next.turn,
-      }));
       pushLog(next, event, `${name(actorId)} robó un recurso del mazo compartido.`);
       break;
     }
@@ -737,9 +852,130 @@ function applyDestroy(state: GameState, ownerId: string, uid: string): void {
       attachedTo: undefined,
       slot: undefined,
       tapped: false,
+      counters: {},
     };
     return { ...p, cards };
   });
+}
+
+/**
+ * Moves one card from the shared resource deck to the player's resources zone,
+ * honouring the 1-per-turn rule. Returns false when nothing was drawn.
+ */
+function grantSharedResource(state: GameState, playerId: string, uid: string, seat: 1 | 2): boolean {
+  if (state.sharedResourceDeckCount <= 0) return false;
+  if (state.players[playerId]?.lastResourceDrawTurn === state.turn) return false;
+  const turn = state.turn;
+  state.sharedResourceDeckCount -= 1;
+  withPlayer(state, playerId, seat, (p) => ({
+    ...p,
+    cards: {
+      ...p.cards,
+      [uid]: {
+        uid,
+        def: SHARED_RESOURCE_DEF,
+        ownerId: playerId,
+        zone: 'resources',
+        faceUp: true,
+        tapped: false,
+        counters: {},
+      },
+    },
+    resourcePoints: p.resourcePoints + 1,
+    lastResourceDrawTurn: turn,
+  }));
+  return true;
+}
+
+/** A card that just became public in the void. */
+function voidCard(uid: string, def: CardDef, ownerId: string): CardInstance {
+  return { uid, def, ownerId, zone: 'void', faceUp: true, tapped: false, counters: {} };
+}
+
+function costSuffix(def: CardDef): string {
+  const resources = Math.max(0, def.coste_recursos ?? 0);
+  const heat = Math.max(0, def.coste_heat ?? 0);
+  const parts = [
+    resources ? `paga ${resources} recurso${resources === 1 ? '' : 's'}` : '',
+    heat ? `+${heat} CC` : '',
+  ].filter(Boolean);
+  return parts.length ? ` (${parts.join(', ')})` : '';
+}
+
+/**
+ * Why `event` breaks a rule given the state right before it, or null when it is
+ * accepted. Pure and shared: the reducer ignores rejected events, and the
+ * private deck (usePrivateDeck) skips them too, so the hidden hand never moves
+ * a card the shared board refused.
+ */
+export function rejectionReason(state: GameState, event: WireEvent): string | null {
+  const actorId = event.playerId;
+  const data = (event.data ?? {}) as Record<string, unknown>;
+  switch (event.type) {
+    case GameEventType.Play: {
+      const d = data as unknown as PlayData;
+      if (!actorId || !d?.def || !d.payCost || !playPaysCost(d)) return null;
+      return costBlock(state.players[actorId], d.def);
+    }
+    case GameEventType.ActivateOrder: {
+      const d = data as unknown as ActivateOrderData;
+      if (!actorId || !d?.uid || !d?.def) return 'falta la carta.';
+      if (d.def.tipo !== 'Orden') return `${d.def.nombre} no es una orden.`;
+      return costBlock(state.players[actorId], d.def);
+    }
+    case GameEventType.ExtraDraw:
+      return deckActionBlock(state, actorId, 'extraDraw');
+    case GameEventType.Reveal:
+      return deckActionBlock(state, actorId, 'reveal', Number((data as unknown as RevealData).count));
+    case GameEventType.RevealResolve: {
+      const d = data as unknown as RevealResolveData;
+      const count = Number(d.count);
+      const block = deckActionBlock(state, actorId, 'reveal', count);
+      if (block) return block;
+      if (!Array.isArray(d.routes) || d.routes.length !== count) {
+        return 'los destinos no cuadran con las cartas reveladas.';
+      }
+      if (d.routes.some((route) => !REVEAL_ROUTES.includes(route))) return 'destino de carta inválido.';
+      const voidCards = Array.isArray(d.voidCards) ? d.voidCards : [];
+      const voidIndexes = d.routes.flatMap((route, index) => (route === 'void' ? [index] : []));
+      const complete =
+        voidCards.length === voidIndexes.length &&
+        voidIndexes.every((index) =>
+          voidCards.some((entry) => entry?.index === index && entry.uid && entry.def),
+        );
+      return complete ? null : 'faltan las cartas que van al Vacío.';
+    }
+    case GameEventType.Mill:
+    case GameEventType.Recycle: {
+      const d = data as unknown as TopCardData;
+      if (!d?.uid || !d?.def) return 'falta la carta superior del mazo.';
+      return deckActionBlock(state, actorId, event.type === GameEventType.Mill ? 'mill' : 'recycle');
+    }
+    default:
+      return null;
+  }
+}
+
+function rejectedVerb(type: string, data: Record<string, unknown>): string {
+  switch (type) {
+    case GameEventType.Play: {
+      const def = data.def as CardDef | undefined;
+      return def?.nombre ? `jugar ${def.nombre}` : 'jugar la carta';
+    }
+    case GameEventType.ActivateOrder:
+      return 'activar la orden';
+    case GameEventType.ExtraDraw:
+      return 'hacer Robo Extra';
+    case GameEventType.Reveal:
+    case GameEventType.RevealResolve:
+      return 'revelar cartas';
+    case GameEventType.Mill:
+      return 'moler';
+    case GameEventType.Recycle:
+      return 'reciclar';
+    default:
+      return 'actuar';
+  }
 }
 
 function markGameOver(

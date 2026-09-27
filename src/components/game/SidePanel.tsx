@@ -93,7 +93,18 @@ export function SidePanel({
           onChange={(event) => setMessage(event.target.value)}
           disabled={disabled}
         />
-        <button type="submit" className="btn btn--sm shrink-0" disabled={disabled || !message.trim()}>
+        <button
+          type="submit"
+          className="btn btn--sm shrink-0"
+          disabled={disabled || !message.trim()}
+          title={
+            disabled
+              ? 'No disponible: sin conexión.'
+              : !message.trim()
+                ? 'No disponible: escribe un mensaje.'
+                : 'Envía el mensaje al chat de la sala'
+          }
+        >
           Enviar
         </button>
       </form>

@@ -32,6 +32,10 @@ export interface UseDecksResult {
   addCard(deckId: string, cardId: string, qty?: number): Promise<void>;
   removeCard(deckId: string, cardId: string): Promise<void>;
   setQty(deckId: string, cardId: string, qty: number): Promise<void>;
+  /** Upserts many rows at once (autofill, import). Rows with qty < 1 are skipped. */
+  upsertCards(deckId: string, items: readonly DeckCardItem[]): Promise<void>;
+  /** Removes every card from the deck (the deck itself is kept). */
+  clearDeck(deckId: string): Promise<void>;
   refresh(): Promise<void>;
 }
 
@@ -221,6 +225,29 @@ export function useDecks(): UseDecksResult {
     [],
   );
 
+  const upsertCards = useCallback(
+    async (deckId: string, items: readonly DeckCardItem[]): Promise<void> => {
+      if (!SUPABASE_ENABLED) return;
+      const rows = items
+        .filter((item) => item.qty >= 1)
+        .map((item) => ({ deck_id: deckId, card_id: item.card_id, qty: item.qty }));
+      if (rows.length === 0) return;
+      const client = await supabase();
+      const { error: upsertError } = await client
+        .from('deck_cards')
+        .upsert(rows, { onConflict: 'deck_id,card_id' });
+      if (upsertError) throw new Error(upsertError.message);
+    },
+    [],
+  );
+
+  const clearDeck = useCallback(async (deckId: string): Promise<void> => {
+    if (!SUPABASE_ENABLED) return;
+    const client = await supabase();
+    const { error: deleteError } = await client.from('deck_cards').delete().eq('deck_id', deckId);
+    if (deleteError) throw new Error(deleteError.message);
+  }, []);
+
   return {
     decks,
     loading,
@@ -233,6 +260,8 @@ export function useDecks(): UseDecksResult {
     addCard,
     removeCard,
     setQty,
+    upsertCards,
+    clearDeck,
     refresh,
   };
 }

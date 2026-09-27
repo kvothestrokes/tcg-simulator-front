@@ -9,10 +9,16 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-import type { CardDef } from '@/lib/game/types';
+import type { CardDef, CardType } from '@/lib/game/types';
 import type { DeckCardItem } from '@/lib/decks/mappers';
 import { loadCatalog, SAMPLE_CATALOG } from '@/lib/game/cards';
 import { isStation, maxCopiesFor, validateAddCard } from '@/lib/decks/validation';
+import {
+  SORT_LABEL,
+  viewCatalog,
+  type CatalogSortKey,
+  type SortDirection,
+} from '@/lib/decks/catalogView';
 import { CardTile } from '@/components/game/CardTile';
 import { Panel } from '@/components/ui/Panel';
 
@@ -23,9 +29,24 @@ interface CardPickerProps {
   onAdd: (cardId: string, qty: number) => Promise<void>;
 }
 
+/** Type chips; accents follow the zone color coding in global.css. */
+const TYPE_CHIPS: { type: CardType | 'all'; label: string; accent: string }[] = [
+  { type: 'all', label: 'Todos', accent: 'var(--color-ink)' },
+  { type: 'Nave', label: 'Nave', accent: 'var(--color-zone-battle)' },
+  { type: 'Orden', label: 'Orden', accent: 'var(--color-zone-orders)' },
+  { type: 'Piloto', label: 'Piloto', accent: 'var(--color-zone-resources)' },
+  { type: 'Gear', label: 'Gear', accent: 'var(--color-zone-gear)' },
+  { type: 'Estación', label: 'Estación', accent: 'var(--color-zone-player)' },
+];
+
+const SORT_KEYS = Object.keys(SORT_LABEL) as CatalogSortKey[];
+
 export function CardPicker({ deckId, items, onAdd }: CardPickerProps) {
   const [catalog, setCatalog] = useState<CardDef[]>(SAMPLE_CATALOG);
   const [filter, setFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState<CardType | 'all'>('all');
+  const [sortKey, setSortKey] = useState<CatalogSortKey>('nombre');
+  const [direction, setDirection] = useState<SortDirection>('asc');
   const [adding, setAdding] = useState<string | null>(null);
 
   useEffect(() => {
@@ -63,14 +84,10 @@ export function CardPicker({ deckId, items, onAdd }: CardPickerProps) {
     }
   };
 
-  const filtered = filter.trim()
-    ? catalog.filter(
-        (c) =>
-          c.nombre.toLowerCase().includes(filter.toLowerCase()) ||
-          c.tipo.toLowerCase().includes(filter.toLowerCase()) ||
-          c.faccion.toLowerCase().includes(filter.toLowerCase()),
-      )
-    : catalog;
+  const filtered = useMemo(
+    () => viewCatalog(catalog, { type: typeFilter, query: filter, sortKey, direction }),
+    [catalog, direction, filter, sortKey, typeFilter],
+  );
 
   return (
     <Panel cut={10} innerClassName="flex flex-col gap-3 p-4">
@@ -85,6 +102,58 @@ export function CardPicker({ deckId, items, onAdd }: CardPickerProps) {
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
       />
+
+      <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Filtrar por tipo">
+        {TYPE_CHIPS.map((chip) => {
+          const active = typeFilter === chip.type;
+          return (
+            <button
+              key={chip.type}
+              type="button"
+              className="phase-chip cursor-pointer"
+              data-state={active ? 'current' : 'upcoming'}
+              aria-pressed={active}
+              style={
+                active
+                  ? { background: chip.accent, borderColor: chip.accent }
+                  : { borderColor: chip.accent, color: chip.accent }
+              }
+              onClick={() => setTypeFilter(chip.type)}
+              title={chip.type === 'all' ? 'Mostrar todas las cartas' : `Mostrar solo cartas de tipo ${chip.label}`}
+            >
+              {chip.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="hud-sub text-[10px]" htmlFor="catalog-sort">
+          Ordenar
+        </label>
+        <select
+          id="catalog-sort"
+          className="field w-auto cursor-pointer py-1 text-[11px]"
+          value={sortKey}
+          onChange={(e) => setSortKey(e.target.value as CatalogSortKey)}
+          title="Criterio de orden. ATK y DEF solo aplican a naves; el resto va al final."
+        >
+          {SORT_KEYS.map((key) => (
+            <option key={key} value={key}>
+              {SORT_LABEL[key]}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          className="btn btn--sm"
+          onClick={() => setDirection((d) => (d === 'asc' ? 'desc' : 'asc'))}
+          title={direction === 'asc' ? 'Orden ascendente (pulsa para descendente)' : 'Orden descendente (pulsa para ascendente)'}
+          aria-label={direction === 'asc' ? 'Orden ascendente' : 'Orden descendente'}
+        >
+          {direction === 'asc' ? '↑ Asc' : '↓ Desc'}
+        </button>
+      </div>
 
       <div
         className="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-3 overflow-y-auto pr-1"

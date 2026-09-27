@@ -2,7 +2,7 @@
  * DeckList — displays the user's saved decks and allows creating/deleting them.
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 
 import type { DeckSummary } from '@/hooks/useDecks';
@@ -15,11 +15,37 @@ interface DeckListProps {
   onSelect: (deck: DeckSummary) => void;
   onCreate: (nombre: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
+  /** Imports an exported deck (JSON text) as a new deck. */
+  onImport: (text: string) => Promise<void>;
 }
 
-export function DeckList({ decks, selectedId, loading, onSelect, onCreate, onDelete }: DeckListProps) {
+/** Exported deck files are tiny; anything bigger is not one of ours. */
+const MAX_IMPORT_BYTES = 256 * 1024;
+
+export function DeckList({ decks, selectedId, loading, onSelect, onCreate, onDelete, onImport }: DeckListProps) {
   const [newName, setNewName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  const handleFile = useCallback(
+    async (file: File | undefined) => {
+      if (!file) return;
+      setImportError(null);
+      if (file.size > MAX_IMPORT_BYTES) {
+        setImportError('El archivo es demasiado grande para ser un mazo exportado.');
+        return;
+      }
+      setBusy(true);
+      try {
+        await onImport(await file.text());
+      } finally {
+        setBusy(false);
+        if (fileInput.current) fileInput.current.value = '';
+      }
+    },
+    [onImport],
+  );
 
   const handleCreate = useCallback(
     async (event: FormEvent) => {
@@ -70,6 +96,26 @@ export function DeckList({ decks, selectedId, loading, onSelect, onCreate, onDel
           Create
         </button>
       </form>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          ref={fileInput}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={(e) => void handleFile(e.target.files?.[0])}
+        />
+        <button
+          type="button"
+          className="btn btn--sm"
+          onClick={() => fileInput.current?.click()}
+          disabled={busy}
+          title="Carga un mazo exportado (.json) como mazo nuevo. Las cartas desconocidas se omiten y se aplican las mismas reglas de construcción."
+        >
+          Importar JSON
+        </button>
+        {importError ? <span className="text-[11px] text-[#fda4af]">{importError}</span> : null}
+      </div>
 
       {loading ? (
         <p className="hud-sub text-[10px] animate-pulse">Loading decks…</p>

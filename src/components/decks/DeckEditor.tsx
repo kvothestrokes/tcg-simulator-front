@@ -13,6 +13,7 @@ import type { DeckCardItem } from '@/lib/decks/mappers';
 import type { CardDef } from '@/lib/game/types';
 import { findCard, SAMPLE_CATALOG } from '@/lib/game/cards';
 import { countNonStationCards, countStations, deckLegality, DECK_RULES } from '@/lib/decks/validation';
+import { serializeDeck } from '@/lib/decks/deckFile';
 import type { DeckSummary } from '@/hooks/useDecks';
 import { CardPicker } from './CardPicker';
 import { DeckCardViewer } from './DeckCardViewer';
@@ -21,6 +22,12 @@ import { Panel } from '@/components/ui/Panel';
 interface DeckEditorProps {
   deck: DeckSummary;
   items: DeckCardItem[];
+  /** Deck contents are still loading (bulk actions stay disabled). */
+  itemsLoading?: boolean;
+  /** Fill up to 40 legal cards (+ a station if missing). */
+  onAutofill: () => Promise<void>;
+  /** Remove every card from the deck. */
+  onClear: () => Promise<void>;
   onRename: (id: string, nombre: string) => Promise<void>;
   onAddCard: (deckId: string, cardId: string, qty: number) => Promise<void>;
   onRemoveCard: (deckId: string, cardId: string) => Promise<void>;
@@ -28,9 +35,35 @@ interface DeckEditorProps {
   onBack: () => void;
 }
 
+/** Browser download of a JSON file (side effect kept in the component layer). */
+function downloadJson(filename: string, data: unknown): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function fileSlug(name: string): string {
+  const slug = name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return slug || 'mazo';
+}
+
 export function DeckEditor({
   deck,
   items,
+  itemsLoading = false,
+  onAutofill,
+  onClear,
   onRename,
   onAddCard,
   onRemoveCard,
@@ -39,6 +72,18 @@ export function DeckEditor({
 }: DeckEditorProps) {
   const [name, setName] = useState(deck.nombre);
   const [renaming, setRenaming] = useState(false);
+  const [bulk, setBulk] = useState<'autofill' | 'clear' | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  const runBulk = useCallback(async (kind: 'autofill' | 'clear', fn: () => Promise<void>) => {
+    setBulk(kind);
+    try {
+      await fn();
+    } finally {
+      setBulk(null);
+      setConfirmClear(false);
+    }
+  }, []);
 
   // Build catalog map for DeckCardViewer + rule checks.
   const [catalogMap, setCatalogMap] = useState<Map<string, CardDef>>(() => {
@@ -140,6 +185,79 @@ export function DeckEditor({
         <span className="hud-sub ml-auto opacity-60">
           Rules: {DECK_RULES.MAX_DECK_CARDS} cards · 1 space station · up to {DECK_RULES.MAX_COPIES} copies
         </span>
+      </div>
+
+      {/* Bulk actions */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          className="btn btn--sm btn--primary"
+          onClick={() => void runBulk('autofill', onAutofill)}
+          disabled={itemsLoading || bulk !== null || (legality.ok && atCardCap)}
+          title={
+            itemsLoading
+              ? 'No disponible: el mazo aún se está cargando.'
+              : legality.ok && atCardCap
+                ? 'No disponible: el mazo ya está completo y es legal.'
+                : `Rellena hasta ${DECK_RULES.MAX_DECK_CARDS} cartas con copias del catálogo (máx. ${DECK_RULES.MAX_COPIES} por carta) y añade una estación si falta. No quita nada de lo que ya tienes.`
+          }
+        >
+          {bulk === 'autofill' ? 'Autocompletando…' : 'Autocompletar'}
+        </button>
+
+        {confirmClear ? (
+          <span className="flex items-center gap-2" role="group" aria-label="Confirmar vaciado">
+            <span className="hud-sub text-[10px] text-[#fda4af]">¿Vaciar el mazo? No se puede deshacer.</span>
+            <button
+              type="button"
+              className="btn btn--sm btn--danger"
+              onClick={() => void runBulk('clear', onClear)}
+              disabled={bulk !== null}
+              title="Quita todas las cartas de este mazo"
+            >
+              {bulk === 'clear' ? 'Vaciando…' : 'Sí, vaciar'}
+            </button>
+            <button
+              type="button"
+              className="btn btn--sm btn--ghost"
+              onClick={() => setConfirmClear(false)}
+              disabled={bulk !== null}
+              title="No vaciar"
+            >
+              Cancelar
+            </button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="btn btn--sm btn--danger"
+            onClick={() => setConfirmClear(true)}
+            disabled={itemsLoading || bulk !== null || items.length === 0}
+            title={
+              items.length === 0
+                ? 'No disponible: el mazo ya está vacío.'
+                : 'Quita todas las cartas del mazo (pide confirmación)'
+            }
+          >
+            Vaciar
+          </button>
+        )}
+
+        <button
+          type="button"
+          className="btn btn--sm ml-auto"
+          onClick={() =>
+            downloadJson(`${fileSlug(deck.nombre)}.cosmic-deck.json`, serializeDeck(deck.nombre, items, catalogMap))
+          }
+          disabled={itemsLoading || items.length === 0}
+          title={
+            items.length === 0
+              ? 'No disponible: el mazo está vacío.'
+              : 'Descarga el mazo como JSON (nombre, estación y cartas con id y cantidad)'
+          }
+        >
+          Exportar JSON
+        </button>
       </div>
 
       {/* Two columns: deck on the left, catalog on the right */}

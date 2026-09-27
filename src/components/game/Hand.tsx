@@ -35,7 +35,12 @@ export function Hand({
       <header className="flex items-center gap-3 px-3 py-1">
         <h3 className="hud-title text-[11px]">Mano</h3>
         <span className="hud-sub tabular">{cards.length}</span>
-        <button type="button" className="btn btn--sm btn--ghost ml-auto" onClick={onToggle}>
+        <button
+          type="button"
+          className="btn btn--sm btn--ghost ml-auto"
+          onClick={onToggle}
+          title={collapsed ? 'Mostrar tu mano' : 'Ocultar tu mano para ganar espacio en la mesa'}
+        >
           {collapsed ? 'Mostrar' : 'Ocultar'}
         </button>
       </header>

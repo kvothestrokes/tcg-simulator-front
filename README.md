@@ -3,10 +3,11 @@
 Frontend del simulador de mesa virtual para Cosmic Breaker. Astro + React +
 TypeScript + Tailwind, contra el servicio de tiempo real en Go y Supabase Auth.
 
-**No implementa reglas del juego.** Los jugadores declaran lo que hacen y mueven
-las cartas ellos mismos; la aplicación registra, transmite y dibuja. No hay
-cálculo de daño, ni validación de jugadas, ni resolución de efectos — ni en el
-servidor ni aquí.
+**El servidor no conoce las reglas.** Los jugadores declaran lo que hacen; el
+servidor ordena, guarda y retransmite. Las reglas automáticas (costes, mano
+inicial, recurso del turno, daño, deck-out…) viven en el reducer puro del
+cliente (`src/lib/game/state.ts`), así que los dos navegadores llegan al mismo
+tablero reproduciendo el mismo log. No hay resolución de efectos de carta.
 
 ---
 
@@ -139,10 +140,10 @@ El tablero del rival lleva las filas invertidas para que su Zona de Batalla
 quede pegada a la tuya, como en una mesa real. Solo se invierte el orden de las
 filas, nunca el texto: rotar las etiquetas 180° las haría ilegibles.
 
-**Heat** es un medidor de 0 a 12 con umbral en 8 (`HEAT_MAX` y `HEAT_THRESHOLD`
-en `src/lib/game/types.ts`). Lo declara cada jugador con los botones `+`/`−`;
-al pasar el umbral el panel se pone rojo. Nadie lo sube solo ni dispara nada:
-igual que un marcador físico, está para que los dos lo vean.
+**Heat** es un medidor de 0 a 10 con umbral en 8 (`HEAT_MAX` y `HEAT_THRESHOLD`
+en `src/lib/game/types.ts`). Sube solo al pagar el `coste_heat` de una carta
+(tope 10) y con el Robo Extra, baja 5 al empezar tu turno, y cada jugador puede
+ajustarlo a mano con `+`/`−`. Al pasar el umbral el panel se pone rojo.
 
 ### Cómo se juega
 
@@ -155,6 +156,40 @@ igual que un marcador físico, está para que los dos lo vean.
   superior.
 
 El turno es una declaración más: el servidor no impide actuar fuera de turno.
+
+### Reglas automáticas
+
+- **Mazo legal obligatorio**: el hangar no deja crear ni entrar a una sala si el
+  mazo elegido no cumple `deckLegality` (40 cartas + 1 estación, máximo 3
+  copias, solo cartas del catálogo) y la mesa no declara `SETUP` con él. Ya no
+  hay mazo de ejemplo de respaldo: repetía cada carta 10 veces.
+- **Preparar mazo**: al sentarte (y con tu mazo del hangar cargado) se declara
+  `SETUP` solo: baraja en tu navegador y roba la **mano inicial de 5** en el
+  mismo evento. Se deriva del estado (`ready`), así que recargar o reconectar no
+  lo repite. Queda un botón «Reintentar preparación» solo como recuperación.
+- **Coste automático**: jugar desde la mano a Batalla, Pilotos o Estación (o
+  enlazar a una nave) gira exactamente `coste_recursos` recursos listos y suma
+  `coste_heat`. Si no te alcanza, la UI lo bloquea y el reducer también rechaza
+  la jugada. Jugar a Recursos, descartar al Vacío, mover cartas ya en mesa y los
+  tokens son gratis. Las **órdenes** se usan con «Activar orden»: pagan y van al
+  Vacío.
+- **Inicio de turno** (`TURN_START`): endereza, roba 1, enfría 5 y te da 1
+  recurso del mazo compartido (consume el robo de recurso del turno). El botón
+  «⟳ Recurso» queda como respaldo manual.
+- **Deck-out**: robar o empezar turno con el mazo vacío es derrota, salvo en el
+  turno 1.
+- **Acciones de mazo** (panel «Mazo», en tu turno): Robo extra (roba 1, +1 de
+  calor, una vez por turno), Revelar 1–5 (solo tú ves las cartas y eliges mano,
+  arriba, fondo o Vacío; cancelar las deja arriba en su orden), Moler (la de
+  arriba al Vacío) y Reciclar (Nave o Gear a Recursos como recurso listo; lo
+  demás al Vacío).
+- **Vacío**: el visor busca por nombre y, en el tuyo, permite devolver cada carta
+  a la mano, al primer hueco libre de batalla, a Recursos o arriba/abajo del mazo.
+  Al entrar en el Vacío una carta pierde sus contadores.
+
+Los eventos antiguos (sin `payCost`, `openingHand` ni `autoResource`) se
+reproducen con las reglas de entonces, para que las partidas en curso no se
+rompan al recargar.
 
 ---
 

@@ -5,25 +5,29 @@
  * función pura del log de eventos. La mano y el mazo nunca salen del navegador.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { CardInspector, type Selection } from './CardInspector';
 import { CardHoverZoom } from './CardHoverZoom';
 import { CardViewerModal } from './CardViewerModal';
 import { CardContextMenu, type ContextMenuState } from './CardContextMenu';
 import { CenterStrip } from './CenterStrip';
+import { DeckActions, type DeckActionBlocks } from './DeckActions';
 import { DiscardViewer } from './DiscardViewer';
 import { Hand } from './Hand';
 import { PlayerBoard } from './PlayerBoard';
+import { RevealModal } from './RevealModal';
+import { RulesModal } from './RulesModal';
 import { SidePanel } from './SidePanel';
 import { TopBar } from './TopBar';
 import type { DragPayload } from './dnd';
 import { Panel } from '../ui/Panel';
 import { useGameRoom } from '../../hooks/useGameRoom';
-import { usePrivateDeck } from '../../hooks/usePrivateDeck';
+import { usePrivateDeck, type PrivateCard } from '../../hooks/usePrivateDeck';
 import { useSelectedLoadout } from '../../hooks/useSelectedLoadout';
 import { useSession } from '../../hooks/useSession';
 import {
+  CHARGE_COUNTER,
   DAMAGE_COUNTER,
   PHASES,
   cardsInZone,
@@ -31,7 +35,17 @@ import {
   type CardInstance,
   type ZoneId,
 } from '../../lib/game/types';
-import { canLinkTo, firstEmptyBattleSlot, isRootShip, shipInSlot } from '../../lib/game/rules';
+import type { RevealRoute } from '../../lib/game/events';
+import { nextTransition } from '../../lib/game/phaseInfo';
+import {
+  canLinkTo,
+  costBlock,
+  deckActionBlock,
+  firstEmptyBattleSlot,
+  isRootShip,
+  playPaysCost,
+  shipInSlot,
+} from '../../lib/game/rules';
 import { loginPath } from '../../lib/navigation';
 import { roomPath } from '../../lib/config';
 import { shortName } from '../../lib/session';
@@ -58,8 +72,16 @@ export function GameTable() {
   const [handCollapsed, setHandCollapsed] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(false);
-  const [discardOpen, setDiscardOpen] = useState(false);
+  /** Whose void is open in the viewer (the opponent's is read-only). */
+  const [discardOwner, setDiscardOwner] = useState<'me' | 'opponent' | null>(null);
+  const [voidZoom, setVoidZoom] = useState<CardInstance | null>(null);
+  /** Snapshot of the top cards being revealed (private, local only). */
+  const [revealCards, setRevealCards] = useState<PrivateCard[] | null>(null);
+  const [revealCount, setRevealCount] = useState(3);
+  /** Short-lived Spanish message for rejected actions (no alert()). */
+  const [notice, setNotice] = useState<string | null>(null);
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  const [rulesOpen, setRulesOpen] = useState(false);
   const [attackSourceUid, setAttackSourceUid] = useState<string | undefined>();
 
   // Zoom flotante: aparece tras un instante de hover para no parpadear al
@@ -72,6 +94,12 @@ export function GameTable() {
     const timer = window.setTimeout(() => setZoomCard(hoverCard), 220);
     return () => window.clearTimeout(timer);
   }, [hoverCard]);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), 4500);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   useEffect(() => {
     if (sessionLoading || identity) return;
@@ -121,6 +149,12 @@ export function GameTable() {
     (uid: string, to: ZoneId, options?: { faceUp?: boolean; slot?: number; attachedTo?: string }) => {
       const card = deck.hand.find((entry) => entry.uid === uid);
       if (!card || !canAct) return;
+      // Same check the reducer runs: an unaffordable play would be rejected.
+      const block = playPaysCost({ from: 'hand', to }) ? costBlock(me, card.def) : null;
+      if (block) {
+        setNotice(`No puedes jugar ${card.def.nombre}. ${block}`);
+        return;
+      }
       actions.playCard({
         uid: card.uid,
         def: card.def,
@@ -132,7 +166,7 @@ export function GameTable() {
       });
       setSelection(null);
     },
-    [actions, canAct, deck.hand],
+    [actions, canAct, deck.hand, me],
   );
 
   const moveOnBoard = useCallback(
@@ -166,7 +200,6 @@ export function GameTable() {
               return;
             }
           }
-          if (occupant && card.def.tipo === 'Nave') return;
         }
         playFromHand(payload.uid, zone, { slot });
         return;
@@ -214,6 +247,11 @@ export function GameTable() {
     actions.drawSharedResource();
   }, [actions, canAct, isMyTurn, state.sharedResourceDeckCount]);
 
+  const transition = useMemo(
+    () => nextTransition(state, identity?.userId, opponent?.userId),
+    [identity?.userId, opponent?.userId, state],
+  );
+
   const nextPhase = useCallback(() => {
     if (!canAct || !identity?.userId) return;
     if (!state.activePlayerId) {
@@ -258,6 +296,105 @@ export function GameTable() {
     actions.spawnToken(slot);
   }, [actions, canAct, me]);
 
+  // --- automatic deck preparation ------------------------------------------
+  // SETUP (shuffle + opening hand of 5) is declared on its own once you are
+  // seated, the initial sync finished and your chosen deck resolved. It is
+  // derived from state (`me.ready`), so a reload or reconnect of a prepared
+  // player never re-runs it; the ref only stops duplicates while the event is
+  // in flight. A RESET clears `ready`, so the next game prepares itself too.
+  const prepareDeck = useCallback(() => {
+    // No starter-deck fallback: an illegal or missing deck never reaches SETUP.
+    if (loadout.playBlock) return;
+    actions.setupDeck(
+      deck.deckSize,
+      loadout.deckName ?? 'Mazo de ejemplo',
+      loadout.station ?? undefined,
+    );
+  }, [actions, deck.deckSize, loadout.deckName, loadout.playBlock, loadout.station]);
+
+  const autoSetupSent = useRef(false);
+  const meReady = Boolean(me?.ready);
+  const meSeated = Boolean(me);
+  useEffect(() => {
+    if (connection !== 'connected' || meReady) {
+      autoSetupSent.current = false;
+      return;
+    }
+    if (!canAct || !meSeated || !loadout.resolved || loadout.playBlock || autoSetupSent.current) return;
+    autoSetupSent.current = true;
+    prepareDeck();
+  }, [canAct, connection, loadout.playBlock, loadout.resolved, meReady, meSeated, prepareDeck]);
+
+  // --- deck actions ----------------------------------------------------------
+  const myId = identity?.userId;
+  const deckBlocks = useMemo<DeckActionBlocks>(() => {
+    const offline = canAct ? null : 'Sin conexión o partida cerrada.';
+    const topMissing = deck.deck.length === 0 ? 'Tu mazo está vacío.' : null;
+    return {
+      draw: offline ?? topMissing,
+      extraDraw: offline ?? deckActionBlock(state, myId, 'extraDraw'),
+      reveal:
+        offline ??
+        deckActionBlock(state, myId, 'reveal', revealCount) ??
+        (deck.deck.length < revealCount ? 'No quedan tantas cartas en el mazo.' : null),
+      mill: offline ?? deckActionBlock(state, myId, 'mill') ?? topMissing,
+      recycle: offline ?? deckActionBlock(state, myId, 'recycle') ?? topMissing,
+    };
+  }, [canAct, deck.deck.length, myId, revealCount, state]);
+
+  const startReveal = useCallback(() => {
+    if (deckBlocks.reveal) return;
+    const top = deck.deck.slice(0, revealCount);
+    actions.reveal(top.length);
+    setRevealCards(top);
+  }, [actions, deck.deck, deckBlocks.reveal, revealCount]);
+
+  const confirmReveal = useCallback(
+    (routes: RevealRoute[]) => {
+      const snapshot = revealCards;
+      setRevealCards(null);
+      if (!snapshot || !canAct) return;
+      // The deck is private and only your own events change it, but if it did
+      // change while the modal was open, routing by position would misfire.
+      const current = deck.deck.slice(0, snapshot.length);
+      if (current.some((card, index) => card.uid !== snapshot[index]?.uid)) {
+        setNotice('Tu mazo cambió mientras revelabas; vuelve a revelar.');
+        return;
+      }
+      const voidCards = snapshot.flatMap((card, index) =>
+        routes[index] === 'void' ? [{ index, uid: card.uid, def: card.def }] : [],
+      );
+      actions.resolveReveal(routes, voidCards);
+    },
+    [actions, canAct, deck.deck, revealCards],
+  );
+
+  const millTop = useCallback(() => {
+    const top = deck.deck[0];
+    if (deckBlocks.mill || !top) return;
+    actions.mill(top);
+  }, [actions, deck.deck, deckBlocks.mill]);
+
+  const recycleTop = useCallback(() => {
+    const top = deck.deck[0];
+    if (deckBlocks.recycle || !top) return;
+    actions.recycle(top);
+  }, [actions, deck.deck, deckBlocks.recycle]);
+
+  const activateOrder = useCallback(
+    (card: PrivateCard) => {
+      if (!canAct) return;
+      const block = costBlock(me, card.def);
+      if (block) {
+        setNotice(`No puedes activar ${card.def.nombre}. ${block}`);
+        return;
+      }
+      actions.activateOrder(card);
+      setSelection(null);
+    },
+    [actions, canAct, me],
+  );
+
   if (!code) {
     return (
       <Centered>
@@ -289,7 +426,9 @@ export function GameTable() {
     );
   }
 
-  const deckReady = (me?.deckCount ?? 0) + (me?.handCount ?? 0) > 0;
+  const deckReady = Boolean(me?.ready);
+  const handPlayBlock =
+    selection?.kind === 'hand' ? costBlock(me, selection.card.def) : null;
   const gameOverText = state.winnerId
     ? `Victoria: ${nameFor(state.winnerId)}${state.endReason ? ` (${state.endReason})` : ''}`
     : undefined;
@@ -312,6 +451,7 @@ export function GameTable() {
         phase={normalizePhase(state.phase)}
         isMyTurn={Boolean(state.activePlayerId) && state.activePlayerId === identity?.userId}
         canAct={canAct}
+        onOpenRules={() => setRulesOpen(true)}
         onFinish={() => void actions.finishGame()}
         onLeave={() => {
           actions.leaveRoom();
@@ -322,6 +462,15 @@ export function GameTable() {
       {lastError ? (
         <p className="shrink-0 border-b border-[rgba(244,63,94,0.4)] bg-[rgba(244,63,94,0.1)] px-3 py-1 text-[11px] text-[#fda4af]">
           {lastError.code}: {lastError.message}
+        </p>
+      ) : null}
+
+      {notice ? (
+        <p
+          className="shrink-0 border-b border-[rgba(251,191,36,0.4)] bg-[rgba(251,191,36,0.1)] px-3 py-1 text-[11px] text-[var(--color-heat)]"
+          role="status"
+        >
+          {notice}
         </p>
       ) : null}
 
@@ -351,6 +500,7 @@ export function GameTable() {
             onDropCard={() => undefined}
             onZoneClick={() => undefined}
             onHeatChange={() => undefined}
+            onVoidClick={() => setDiscardOwner('opponent')}
             onAttackTarget={handleAttackTarget}
           />
 
@@ -362,6 +512,8 @@ export function GameTable() {
             canAct={canAct}
             canDrawResource={canDrawResource}
             resourceDrawnThisTurn={resourceDrawnThisTurn}
+            transition={transition}
+            battleFull={firstEmptyBattleSlot(me) === undefined}
             gameOverText={gameOverText}
             onAdvancePhase={nextPhase}
             onDrawResource={drawSharedResource}
@@ -386,7 +538,7 @@ export function GameTable() {
             onZoneClick={handleZoneClick}
             onHeatChange={actions.setHeat}
             onDeckClick={() => canAct && actions.draw(1)}
-            onVoidClick={() => setDiscardOpen(true)}
+            onVoidClick={() => setDiscardOwner('me')}
           />
         </div>
 
@@ -406,55 +558,82 @@ export function GameTable() {
             <h3 className="hud-title mb-2 text-[11px]">Mazo</h3>
             {!deckReady ? (
               <>
+                <p className="hud-sub text-[10px] leading-relaxed">
+                  {!loadout.resolved
+                    ? 'Cargando tu mazo…'
+                    : loadout.playBlock
+                      ? 'No se puede preparar la partida con este mazo.'
+                      : `Preparando mazo (${deck.deckSize}) y mano inicial de 5…`}
+                </p>
+                {/* Recovery only: the automatic SETUP is sent once per connection,
+                    and a message dropped by the socket or refused by the server
+                    (rate limit) is not retried on its own. */}
                 <button
                   type="button"
-                  className="btn btn--primary w-full"
-                  onClick={() =>
-                    actions.setupDeck(
-                      deck.deckSize,
-                      loadout.deckName ?? 'Mazo de ejemplo',
-                      loadout.station ?? undefined,
-                    )
+                  className="btn btn--sm btn--ghost mt-1.5 w-full"
+                  onClick={prepareDeck}
+                  disabled={!canAct || !loadout.resolved || Boolean(loadout.playBlock)}
+                  title={
+                    loadout.playBlock
+                      ? `No disponible: ${loadout.playBlock}`
+                      : !canAct
+                        ? 'No disponible: sin conexión o partida cerrada.'
+                        : !loadout.resolved
+                          ? 'No disponible: tu mazo aún se está cargando.'
+                          : 'Solo si la preparación automática no llega: vuelve a declarar el mazo'
                   }
-                  disabled={!canAct}
                 >
-                  Preparar mazo ({deck.deckSize})
+                  Reintentar preparación
                 </button>
                 <p className="hud-sub mt-2 text-[9px] leading-relaxed">
-                  {loadout.ready ? (
+                  {loadout.playBlock && loadout.resolved ? (
+                    <span className="text-[#fda4af]">
+                      {loadout.playBlock}{' '}
+                      <a className="underline" href="/decks" title="Abre el constructor de mazos">
+                        Mis mazos
+                      </a>{' '}
+                      ·{' '}
+                      <a className="underline" href="/lobby" title="Vuelve al hangar para elegir otro mazo">
+                        Elegir mazo
+                      </a>
+                    </span>
+                  ) : loadout.ready ? (
                     <>
                       Mazo elegido:{' '}
                       <span className="text-[var(--color-signal)]">{loadout.deckName}</span>. Se baraja
                       en tu navegador; el rival solo verá cuántas cartas tienes.
                     </>
-                  ) : (
-                    <>
-                      No elegiste mazo en el hangar: se usará el de ejemplo.{' '}
-                      <a className="underline" href="/lobby">
-                        Elegir mazo
-                      </a>
-                      .
-                    </>
-                  )}
+                  ) : null}
                 </p>
               </>
             ) : (
               <div className="grid grid-cols-2 gap-1">
-                <button className="btn btn--sm" type="button" onClick={() => actions.draw(1)} disabled={!canAct}>
-                  Robar 1
-                </button>
-                <button className="btn btn--sm" type="button" onClick={() => actions.draw(5)} disabled={!canAct}>
-                  Robar 5
-                </button>
+                <DeckActions
+                  blocks={deckBlocks}
+                  revealCount={revealCount}
+                  onRevealCountChange={setRevealCount}
+                  onDraw={() => canAct && actions.draw(1)}
+                  onExtraDraw={() => !deckBlocks.extraDraw && actions.extraDraw()}
+                  onReveal={startReveal}
+                  onMill={millTop}
+                  onRecycle={recycleTop}
+                />
                 <button
                   className="btn btn--sm"
                   type="button"
                   onClick={() => actions.shuffleDeck(deck.deck.length)}
                   disabled={!canAct}
+                  title={canAct ? 'Baraja tu mazo (en tu navegador; el rival solo lo ve anotado)' : 'No disponible: sin conexión o partida cerrada.'}
                 >
                   Barajar
                 </button>
-                <button className="btn btn--sm" type="button" onClick={() => actions.rollDice(6)} disabled={!canAct}>
+                <button
+                  className="btn btn--sm"
+                  type="button"
+                  onClick={() => actions.rollDice(6)}
+                  disabled={!canAct}
+                  title={canAct ? 'Tira un dado de 6 caras; el resultado queda en el registro' : 'No disponible: sin conexión o partida cerrada.'}
+                >
                   Dado d6
                 </button>
                 {opponent ? (
@@ -463,6 +642,7 @@ export function GameTable() {
                     type="button"
                     onClick={() => actions.concede(opponent.userId)}
                     disabled={!canAct}
+                    title={canAct ? 'Te rindes: el rival gana la partida' : 'No disponible: sin conexión o partida cerrada.'}
                   >
                     Conceder
                   </button>
@@ -476,6 +656,11 @@ export function GameTable() {
                     }
                   }}
                   disabled={!canAct}
+                  title={
+                    canAct
+                      ? 'Vacía las zonas de los dos jugadores y vuelve al turno 1 (pide confirmación)'
+                      : 'No disponible: sin conexión o partida cerrada.'
+                  }
                 >
                   Reiniciar mesa
                 </button>
@@ -527,6 +712,12 @@ export function GameTable() {
                 playFromHand(selection.card.uid, 'void', { faceUp: true });
               }
             }}
+            playBlock={handPlayBlock}
+            onActivateOrder={
+              selection?.kind === 'hand' && canAct
+                ? () => activateOrder(selection.card)
+                : undefined
+            }
             onLink={(parentUid) => {
               if (selection?.kind === 'board' && selection.owned) {
                 actions.linkCard(selection.card.uid, parentUid);
@@ -570,7 +761,9 @@ export function GameTable() {
         onToggle={() => setHandCollapsed((value) => !value)}
       />
 
-      {zoomCard && !viewerOpen && !discardOpen && !menu ? (
+      {rulesOpen ? <RulesModal onClose={() => setRulesOpen(false)} /> : null}
+
+      {zoomCard && !viewerOpen && !discardOwner && !revealCards && !menu && !rulesOpen ? (
         <CardHoverZoom def={zoomCard.def} instance={zoomCard} />
       ) : null}
 
@@ -582,14 +775,53 @@ export function GameTable() {
         />
       ) : null}
 
-      {discardOpen && me ? (
+      {discardOwner === 'me' && me ? (
         <DiscardViewer
           cards={cardsInZone(me, 'void')}
-          onClose={() => setDiscardOpen(false)}
-          onSelect={(card) => {
-            setSelection({ kind: 'board', card, owned: true });
-            setDiscardOpen(false);
-          }}
+          ownerLabel="Tú"
+          actions={
+            canAct
+              ? {
+                  onToHand: (card) => actions.returnToHand(card),
+                  onToBattle:
+                    firstEmptyBattleSlot(me) === undefined
+                      ? undefined
+                      : (card) =>
+                          actions.moveCard({
+                            uid: card.uid,
+                            from: 'void',
+                            to: 'battle',
+                            slot: firstEmptyBattleSlot(me),
+                          }),
+                  onToResources: (card) =>
+                    actions.moveCard({ uid: card.uid, from: 'void', to: 'resources' }),
+                  onToDeck: (card, position) => actions.returnToDeck(card, position),
+                }
+              : undefined
+          }
+          onView={setVoidZoom}
+          onClose={() => setDiscardOwner(null)}
+        />
+      ) : null}
+
+      {discardOwner === 'opponent' && opponent ? (
+        <DiscardViewer
+          cards={cardsInZone(opponent, 'void')}
+          ownerLabel={nameFor(opponent.userId)}
+          onView={setVoidZoom}
+          onClose={() => setDiscardOwner(null)}
+        />
+      ) : null}
+
+      {voidZoom ? (
+        <CardViewerModal def={voidZoom.def} instance={voidZoom} onClose={() => setVoidZoom(null)} />
+      ) : null}
+
+      {revealCards ? (
+        <RevealModal
+          cards={revealCards}
+          onConfirm={confirmReveal}
+          onCancel={() => setRevealCards(null)}
         />
       ) : null}
 
@@ -604,6 +836,10 @@ export function GameTable() {
           }}
           onDamage={(value) => {
             actions.setCounter(menu.card.uid, DAMAGE_COUNTER, value);
+            setMenu(null);
+          }}
+          onCharge={(value) => {
+            actions.setCounter(menu.card.uid, CHARGE_COUNTER, Math.max(0, value));
             setMenu(null);
           }}
           onToVoid={() => {

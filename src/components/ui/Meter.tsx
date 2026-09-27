@@ -67,6 +67,7 @@ export function Stepper({ value, min = 0, max, onChange, disabled, label }: Step
         onClick={() => onChange(Math.max(min, value - 1))}
         disabled={disabled || value <= min}
         aria-label={label ? `Reducir ${label}` : 'Reducir'}
+        title={label ? `Reducir ${label} en 1` : 'Reducir en 1'}
       >
         −
       </button>
@@ -79,6 +80,7 @@ export function Stepper({ value, min = 0, max, onChange, disabled, label }: Step
         onClick={() => onChange(Math.min(max, value + 1))}
         disabled={disabled || value >= max}
         aria-label={label ? `Aumentar ${label}` : 'Aumentar'}
+        title={label ? `Aumentar ${label} en 1` : 'Aumentar en 1'}
       >
         +
       </button>

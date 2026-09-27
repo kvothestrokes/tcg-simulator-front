@@ -10,10 +10,14 @@ import {
   BATTLE_SLOTS,
   DAMAGE_COUNTER,
   GEAR_MAX_PER_SHIP,
+  HEAT_MAX,
+  REVEAL_MAX,
   cardsInZone,
   type CardDef,
   type CardInstance,
+  type GameState,
   type PlayerState,
+  type ZoneId,
 } from './types';
 
 export const SHARED_RESOURCE_DEF: CardDef = {
@@ -136,4 +140,88 @@ export function findCardAcross(
     if (card) return { player, card };
   }
   return undefined;
+}
+
+// --- costs -------------------------------------------------------------------
+
+/** Board zones where a card played from hand pays its cost. */
+export const COST_ZONES: readonly ZoneId[] = ['battle', 'pilots', 'station'];
+
+/**
+ * Whether a play pays its cost: only hand → battle / pilots / station, and
+ * never tokens. Resources and the void are free.
+ */
+export function playPaysCost(input: { from: ZoneId; to: ZoneId; isToken?: boolean }): boolean {
+  return input.from === 'hand' && !input.isToken && COST_ZONES.includes(input.to);
+}
+
+function resourceCost(def: CardDef): number {
+  return Math.max(0, Math.round(Number(def.coste_recursos) || 0));
+}
+
+function heatCost(def: CardDef): number {
+  return Math.max(0, Math.round(Number(def.coste_heat) || 0));
+}
+
+/** Spanish reason when the player cannot pay `def`, otherwise null. */
+export function costBlock(player: PlayerState | undefined, def: CardDef): string | null {
+  const needed = resourceCost(def);
+  const ready = readyResources(player).length;
+  if (ready >= needed) return null;
+  return `Faltan recursos: necesitas ${needed} y tienes ${ready} listo${ready === 1 ? '' : 's'}.`;
+}
+
+/**
+ * Pays `def`: taps exactly `coste_recursos` ready resources (slot, then uid
+ * order, so both clients tap the same cards) and adds `coste_heat`, clamped at
+ * HEAT_MAX. The caller must check `costBlock` first.
+ */
+export function payCost(player: PlayerState, def: CardDef): PlayerState {
+  const cards = { ...player.cards };
+  for (const card of readyResources(player).slice(0, resourceCost(def))) {
+    cards[card.uid] = { ...card, tapped: true };
+  }
+  return { ...player, cards, heat: Math.min(HEAT_MAX, Math.max(0, player.heat + heatCost(def))) };
+}
+
+// --- deck actions --------------------------------------------------------------
+
+export type DeckAction = 'extraDraw' | 'reveal' | 'mill' | 'recycle';
+
+/** Same convention as the UI: before the first turn nobody holds the initiative. */
+export function isPlayersTurn(state: GameState, userId: string | undefined): boolean {
+  if (!userId) return false;
+  return !state.activePlayerId || state.activePlayerId === userId;
+}
+
+/**
+ * Spanish reason why `userId` cannot run a deck action right now, or null.
+ * Shared by the reducer (to reject) and the UI (to disable with a tooltip).
+ */
+export function deckActionBlock(
+  state: GameState,
+  userId: string | undefined,
+  action: DeckAction,
+  count = 1,
+): string | null {
+  const player = userId ? state.players[userId] : undefined;
+  if (!player) return 'Aún no estás en la mesa.';
+  if (!isPlayersTurn(state, userId)) return 'Solo en tu turno.';
+  if (player.deckCount <= 0) return 'Tu mazo está vacío.';
+  if (action === 'extraDraw') {
+    if (player.lastExtraDrawTurn === state.turn) return 'Ya usaste el Robo Extra este turno.';
+    if (player.heat >= HEAT_MAX) return 'Calor al máximo.';
+  }
+  if (action === 'reveal') {
+    if (!Number.isInteger(count) || count < 1 || count > REVEAL_MAX) {
+      return `Puedes revelar entre 1 y ${REVEAL_MAX} cartas.`;
+    }
+    if (count > player.deckCount) return 'No quedan tantas cartas en el mazo.';
+  }
+  return null;
+}
+
+/** Recycle: Ships and Gears become resources; everything else goes to the void. */
+export function recycleDestination(def: CardDef): 'resources' | 'void' {
+  return def.tipo === 'Nave' || def.tipo === 'Gear' ? 'resources' : 'void';
 }

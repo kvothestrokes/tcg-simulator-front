@@ -12,10 +12,12 @@
 
 import { useCallback, useEffect, useMemo, useState, type SyntheticEvent } from 'react';
 
+import { RulesModal } from '../game/RulesModal';
 import { Panel, PanelSection } from '../ui/Panel';
 import { StatusDot } from '../ui/StatusDot';
 import { Wordmark } from '../ui/Wordmark';
 import { useDecks } from '../../hooks/useDecks';
+import { useSelectedLoadout } from '../../hooks/useSelectedLoadout';
 import { useSession } from '../../hooks/useSession';
 import { getSelectedDeckId, setSelectedDeckId } from '../../lib/decks/selectedDeck';
 import { ApiError, RealtimeApi, errorMessage, type HealthResponse, type RoomResponse } from '../../lib/api';
@@ -51,18 +53,28 @@ export function Lobby() {
   const [recent, setRecent] = useState<RecentRoom[]>([]);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [selectedDeck, setSelectedDeck] = useState<string | null>(null);
+  const [rulesOpen, setRulesOpen] = useState(false);
 
   // Restore the previously chosen loadout once the identity is known.
   useEffect(() => {
     setSelectedDeck(getSelectedDeckId(identity?.userId));
   }, [identity?.userId]);
 
-  // Choosing a deck is mandatory only when the feature is on and the player
-  // actually has decks to choose from; otherwise the table falls back to the
-  // sample deck.
-  const mustChooseDeck = decksEnabled && decks.length > 0;
+  // A legal deck is mandatory: there is no starter-deck fallback (it breaks the
+  // 3-copy rule, see lib/decks/matchGate). The loadout hook checks the chosen
+  // deck against the construction rules.
+  const loadout = useSelectedLoadout(identity?.userId, selectedDeck);
   const deckChosen = selectedDeck !== null && decks.some((d) => d.id === selectedDeck);
-  const deckReady = !mustChooseDeck || deckChosen;
+  const startBlock = !decksEnabled
+    ? 'Los mazos no están disponibles (Supabase sin configurar).'
+    : decksLoading
+      ? 'Cargando mazos…'
+      : selectedDeck && !deckChosen
+        ? 'El mazo elegido ya no existe. Elige otro.'
+        : loadout.deckId !== selectedDeck
+          ? 'Comprobando tu mazo…'
+          : loadout.playBlock;
+  const deckReady = !startBlock;
 
   const chooseDeck = useCallback(
     (deckId: string) => {
@@ -164,6 +176,7 @@ export function Lobby() {
 
   return (
     <div className="flex flex-col gap-8">
+      {rulesOpen ? <RulesModal onClose={() => setRulesOpen(false)} /> : null}
       <header className="flex flex-wrap items-center justify-between gap-4">
         <Wordmark size="sm" />
         <div className="flex items-center gap-3 text-xs">
@@ -173,10 +186,23 @@ export function Lobby() {
               #{shortName(identity.userId)}
             </span>
           </span>
-          <a className="btn btn--sm" href="/decks">
+          <button
+            type="button"
+            className="btn btn--sm btn--ghost"
+            onClick={() => setRulesOpen(true)}
+            title="Abre el resumen de las reglas tal como las aplica el simulador"
+          >
+            Reglamento
+          </button>
+          <a className="btn btn--sm" href="/decks" title="Crear y editar tus mazos">
             Mis mazos
           </a>
-          <button type="button" className="btn btn--sm btn--ghost" onClick={() => void signOut()}>
+          <button
+            type="button"
+            className="btn btn--sm btn--ghost"
+            onClick={() => void signOut()}
+            title="Cerrar sesión"
+          >
             Salir
           </button>
         </div>
@@ -229,9 +255,21 @@ export function Lobby() {
             </div>
           )}
 
-          {mustChooseDeck && !deckChosen ? (
-            <p className="mt-3 text-[11px] text-[#fda4af]">
-              Selecciona un mazo para poder crear o entrar a una sala.
+          {startBlock && !decksLoading ? (
+            <p className="mt-3 text-[11px] text-[#fda4af]" role="status">
+              {startBlock}
+              {loadout.legality && !loadout.legality.ok ? (
+                <>
+                  {' '}
+                  <a className="underline" href="/decks" title="Abre el constructor de mazos">
+                    Arreglar en Mis mazos
+                  </a>
+                </>
+              ) : null}
+            </p>
+          ) : deckReady ? (
+            <p className="mt-3 text-[11px] text-[var(--color-ok)]">
+              ✓ Mazo legal: {loadout.deckName ?? 'listo'}.
             </p>
           ) : null}
         </PanelSection>
@@ -262,6 +300,7 @@ export function Lobby() {
             className="btn btn--primary w-full"
             onClick={() => void handleCreate()}
             disabled={busy !== null || !deckReady}
+            title={startBlock ? `No disponible: ${startBlock}` : 'Crea la sala y ocupa el asiento 1'}
           >
             {busy === 'create' ? 'Creando…' : 'Crear sala'}
           </button>
@@ -293,6 +332,13 @@ export function Lobby() {
               type="submit"
               className="btn w-full"
               disabled={busy !== null || code.trim().length < 4 || !deckReady}
+              title={
+                startBlock
+                  ? `No disponible: ${startBlock}`
+                  : code.trim().length < 4
+                    ? 'No disponible: escribe un código de al menos 4 caracteres.'
+                    : 'Ocupa el asiento libre de esa sala'
+              }
             >
               {busy === 'join' ? 'Entrando…' : 'Entrar'}
             </button>

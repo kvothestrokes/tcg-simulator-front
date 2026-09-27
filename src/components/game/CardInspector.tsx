@@ -23,7 +23,7 @@ import {
   type PlayerState,
   type ZoneId,
 } from '../../lib/game/types';
-import { attachedTo, effectiveAttack, effectiveDefense } from '../../lib/game/rules';
+import { attachedTo, COST_ZONES, effectiveAttack, effectiveDefense } from '../../lib/game/rules';
 
 export type Selection =
   | { kind: 'hand'; card: PrivateCard }
@@ -45,6 +45,10 @@ interface CardInspectorProps {
   onToHand: () => void;
   onToDeck: () => void;
   onDiscardFromHand: () => void;
+  /** Hand card: why its cost can't be paid right now (null = affordable). */
+  playBlock?: string | null;
+  /** Hand Order: pay its cost and send it to the void. */
+  onActivateOrder?: () => void;
   onLink?: (parentUid: string) => void;
   onUnlink?: () => void;
   onAttack?: () => void;
@@ -53,7 +57,23 @@ interface CardInspectorProps {
 
 const PLAY_TARGETS: ZoneId[] = ['battle', 'resources', 'pilots', 'void'];
 const MOVE_TARGETS: ZoneId[] = ['battle', 'station', 'resources', 'pilots', 'void'];
-const COUNTER_KEYS = ['daño', 'escudo', 'marca'] as const;
+const COUNTER_KEYS = ['daño', 'escudo', 'marca', 'carga'] as const;
+const COUNTER_MAX = 99;
+
+const COUNTER_HINT: Record<(typeof COUNTER_KEYS)[number], string> = {
+  daño: 'Daño recibido. Al resolver un ataque, la nave cae si el daño llega a su DEF y la estación si llega a sus PV.',
+  escudo: 'Marcador manual de escudo (no lo aplica ninguna regla automática).',
+  marca: 'Marcador manual genérico.',
+  carga: 'Marcador manual de carga (energía acumulada para efectos de carta).',
+};
+
+const ZONE_HINT: Partial<Record<ZoneId, string>> = {
+  battle: 'A tu Zona de Batalla',
+  station: 'A tu zona de Estación',
+  resources: 'A tu Zona de Recursos',
+  pilots: 'A tu reserva de pilotos',
+  void: 'Al Vacío (pila de descarte pública)',
+};
 
 export function CardInspector({
   selection,
@@ -70,6 +90,8 @@ export function CardInspector({
   onToHand,
   onToDeck,
   onDiscardFromHand,
+  playBlock = null,
+  onActivateOrder,
   onLink,
   onUnlink,
   onAttack,
@@ -123,6 +145,7 @@ export function CardInspector({
             className="step shrink-0"
             onClick={onClose}
             aria-label="Cerrar inspector"
+            title="Cerrar el inspector y quitar la selección"
           >
             ×
           </button>
@@ -136,7 +159,12 @@ export function CardInspector({
           />
         </div>
         {onEnlarge ? (
-          <button type="button" className="btn btn--sm w-full" onClick={onEnlarge}>
+          <button
+            type="button"
+            className="btn btn--sm w-full"
+            onClick={onEnlarge}
+            title="Abrir la carta a tamaño completo"
+          >
             Ver grande
           </button>
         ) : null}
@@ -179,17 +207,57 @@ export function CardInspector({
         </p>
       ) : selection.kind === 'hand' ? (
         <>
-          <Group label="Jugar en">
-            {PLAY_TARGETS.map((zone) => (
+          <p className="hud-sub text-[9px]">
+            Coste al jugar en batalla, pilotos o estación: {def.coste_recursos} recurso
+            {def.coste_recursos === 1 ? '' : 's'}
+            {def.coste_heat ? ` · +${def.coste_heat} CC` : ''}. En Recursos o al Vacío es gratis.
+          </p>
+          {playBlock ? (
+            <p className="text-[10px] leading-snug text-[#fda4af]" role="status">
+              {playBlock}
+            </p>
+          ) : null}
+
+          {def.tipo === 'Orden' ? (
+            <Group label="Orden">
               <button
-                key={zone}
                 type="button"
-                className="btn btn--sm"
-                onClick={() => onPlay(zone)}
+                className="btn btn--sm btn--primary"
+                onClick={onActivateOrder}
+                disabled={Boolean(playBlock) || !onActivateOrder}
+                title={
+                  playBlock
+                    ? `No disponible: ${playBlock}`
+                    : 'Paga su coste y la envía al Vacío'
+                }
               >
-                {ZONE_LABEL[zone]}
+                Activar orden
               </button>
-            ))}
+            </Group>
+          ) : null}
+
+          <Group label="Jugar en">
+            {PLAY_TARGETS.map((zone) => {
+              const blocked = Boolean(playBlock) && COST_ZONES.includes(zone);
+              return (
+                <button
+                  key={zone}
+                  type="button"
+                  className="btn btn--sm"
+                  onClick={() => onPlay(zone)}
+                  disabled={blocked}
+                  title={
+                    blocked
+                      ? `No disponible: ${playBlock}`
+                      : COST_ZONES.includes(zone)
+                        ? `${ZONE_HINT[zone]}: paga ${def.coste_recursos} recurso${def.coste_recursos === 1 ? '' : 's'}${def.coste_heat ? ` y +${def.coste_heat} de calor` : ''}`
+                        : `${ZONE_HINT[zone]} (gratis)`
+                  }
+                >
+                  {ZONE_LABEL[zone]}
+                </button>
+              );
+            })}
           </Group>
 
           {ships.length > 0 && (def.tipo === 'Piloto' || def.tipo === 'Gear') ? (
@@ -200,6 +268,12 @@ export function CardInspector({
                   type="button"
                   className="btn btn--sm"
                   onClick={() => onLink?.(ship.uid)}
+                  disabled={Boolean(playBlock)}
+                  title={
+                    playBlock
+                      ? `No disponible: ${playBlock}`
+                      : `Jugar enlazada a ${ship.def.nombre} (paga su coste)`
+                  }
                 >
                   {ship.def.nombre}
                 </button>
@@ -208,7 +282,12 @@ export function CardInspector({
           ) : null}
 
           <Group label="Descartar">
-            <button type="button" className="btn btn--sm btn--danger" onClick={onDiscardFromHand}>
+            <button
+              type="button"
+              className="btn btn--sm btn--danger"
+              onClick={onDiscardFromHand}
+              title="Descarta la carta de tu mano al Vacío, sin pagar coste"
+            >
               Al Vacío
             </button>
           </Group>
@@ -220,6 +299,11 @@ export function CardInspector({
               type="button"
               className="btn btn--sm"
               onClick={() => onTap(!(instance?.tapped ?? false))}
+              title={
+                instance?.tapped
+                  ? 'Enderezar: la carta vuelve a estar lista'
+                  : 'Girar 90° (agotar): marca la carta como usada este turno'
+              }
             >
               {instance?.tapped ? 'Enderezar' : 'Girar'}
             </button>
@@ -227,16 +311,31 @@ export function CardInspector({
               type="button"
               className="btn btn--sm"
               onClick={() => onFlip(!(instance?.faceUp ?? true))}
+              title={
+                instance?.faceUp
+                  ? 'Poner boca abajo: el rival deja de ver la carta'
+                  : 'Poner boca arriba: la carta se revela a los dos'
+              }
             >
               {instance?.faceUp ? 'Boca abajo' : 'Boca arriba'}
             </button>
             {instance?.def.tipo === 'Nave' ? (
-              <button type="button" className="btn btn--sm btn--primary" onClick={onAttack}>
+              <button
+                type="button"
+                className="btn btn--sm btn--primary"
+                onClick={onAttack}
+                title="Declara un ataque: después elige una nave o la estación enemiga. Tu nave se agota y suma su ATK como daño al objetivo."
+              >
                 Atacar
               </button>
             ) : null}
             {instance?.attachedTo ? (
-              <button type="button" className="btn btn--sm" onClick={onUnlink}>
+              <button
+                type="button"
+                className="btn btn--sm"
+                onClick={onUnlink}
+                title="Separa la carta de su nave: el piloto vuelve a la reserva y el gear a Recursos"
+              >
                 Desenganchar
               </button>
             ) : null}
@@ -250,6 +349,7 @@ export function CardInspector({
                   type="button"
                   className="btn btn--sm"
                   onClick={() => onLink?.(ship.uid)}
+                  title={`Enlazar a ${ship.def.nombre} (1 piloto y hasta 2 gears por nave)`}
                 >
                   {ship.def.nombre}
                 </button>
@@ -264,6 +364,7 @@ export function CardInspector({
                 type="button"
                 className="btn btn--sm"
                 onClick={() => onMove(zone)}
+                title={`${ZONE_HINT[zone] ?? ZONE_LABEL[zone]}. Mover cartas ya en mesa es gratis.`}
               >
                 {ZONE_LABEL[zone]}
               </button>
@@ -274,12 +375,14 @@ export function CardInspector({
             {COUNTER_KEYS.map((key) => {
               const value = instance?.counters[key] ?? 0;
               return (
-                <span key={key} className="flex items-center gap-1">
+                <span key={key} className="flex items-center gap-1" title={COUNTER_HINT[key]}>
                   <button
                     type="button"
                     className="step"
-                    onClick={() => onCounter(key, value - 1)}
+                    onClick={() => onCounter(key, Math.max(0, value - 1))}
+                    disabled={value <= 0}
                     aria-label={`Reducir ${key}`}
+                    title={value <= 0 ? `No disponible: ${key} ya está en 0` : `Quitar 1 de ${key}`}
                   >
                     −
                   </button>
@@ -289,8 +392,10 @@ export function CardInspector({
                   <button
                     type="button"
                     className="step"
-                    onClick={() => onCounter(key, value + 1)}
+                    onClick={() => onCounter(key, Math.min(COUNTER_MAX, value + 1))}
+                    disabled={value >= COUNTER_MAX}
                     aria-label={`Aumentar ${key}`}
+                    title={`Añadir 1 de ${key}`}
                   >
                     +
                   </button>
@@ -300,14 +405,29 @@ export function CardInspector({
           </Group>
 
           <Group label="Retirar">
-            <button type="button" className="btn btn--sm" onClick={onToHand}>
+            <button
+              type="button"
+              className="btn btn--sm"
+              onClick={onToHand}
+              title="Devuelve la carta a tu mano (lo enlazado queda suelto)"
+            >
               A la mano
             </button>
-            <button type="button" className="btn btn--sm" onClick={onToDeck}>
+            <button
+              type="button"
+              className="btn btn--sm"
+              onClick={onToDeck}
+              title="Devuelve la carta a tu mazo"
+            >
               Al mazo
             </button>
             {instance?.def.tipo === 'Nave' ? (
-              <button type="button" className="btn btn--sm btn--danger" onClick={onDestroy}>
+              <button
+                type="button"
+                className="btn btn--sm btn--danger"
+                onClick={onDestroy}
+                title="Destruye la nave: va al Vacío, su piloto a la reserva y sus gears a Recursos"
+              >
                 Destruir
               </button>
             ) : null}

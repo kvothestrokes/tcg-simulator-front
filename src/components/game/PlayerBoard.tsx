@@ -40,9 +40,7 @@ import {
   damageOn,
   effectiveAttack,
   effectiveDefense,
-  isRootShip,
   readyResources,
-  shipInSlot,
 } from '../../lib/game/rules';
 
 interface PlayerBoardProps {
@@ -87,8 +85,7 @@ function useElementSize<T extends HTMLElement>() {
 
 const PORTRAIT_RATIO = CARD_SIZE_PORTRAIT.h / CARD_SIZE_PORTRAIT.w;
 const BATTLE_GAP = 6;
-const CELL_PADDING = 10;
-const STAT_HEIGHT = 16;
+const CELL_PADDING = 8;
 
 export function PlayerBoard({
   player,
@@ -124,7 +121,7 @@ export function PlayerBoard({
       ? (battleSize.width - BATTLE_GAP * (BATTLE_SLOTS - 1)) / BATTLE_SLOTS - CELL_PADDING
       : cardWidth;
   const byHeight =
-    battleSize.height > 0 ? (battleSize.height - STAT_HEIGHT - 8) / PORTRAIT_RATIO : cardWidth;
+    battleSize.height > 0 ? (battleSize.height - 6) / PORTRAIT_RATIO : cardWidth;
   const battleW = Math.max(40, Math.min(cardWidth, Math.floor(Math.min(byWidth, byHeight))));
 
   const railCard = Math.round(cardWidth * 0.46);
@@ -166,62 +163,88 @@ export function PlayerBoard({
   const heat = player?.heat ?? 0;
   const overheated = heat >= HEAT_THRESHOLD;
 
-  // Ocupante de un hueco: la nave raíz si la hay, o cualquier carta suelta que
-  // se haya movido a ese hueco (estación, piloto, etc.). Así NUNCA desaparece
-  // una carta al soltarla en la batalla.
-  const occupantInSlot = (slot: number): CardInstance | undefined =>
-    shipInSlot(player, slot) ??
-    battleCards.find((card) => !card.attachedTo && card.slot === slot && !isRootShip(card));
+  // Cartas sueltas de un hueco (sin pilotos/gears enlazados). Cualquier carta
+  // que caiga en la batalla se dibuja aquí, así NUNCA desaparece.
+  const slotCards = (slot: number): CardInstance[] =>
+    battleCards.filter((card) => !card.attachedTo && card.slot === slot);
+
+  // Stats superpuestos en la propia carta (ataque en ámbar, escudo en cian),
+  // para no gastar alto con una línea aparte.
+  const shipStats = (card: CardInstance) => (
+    <span className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-[rgba(8,9,11,0.72)] px-0.5 text-[8px] leading-none">
+      <span className="tabular text-[var(--color-heat)]">{effectiveAttack(player, card)}</span>
+      <span className="opacity-40">/</span>
+      <span className="tabular text-[var(--color-signal)]">{effectiveDefense(player, card)}</span>
+      {card.isToken ? <span className="opacity-60">·T</span> : null}
+    </span>
+  );
+
+  // Varias cartas en un mismo hueco se dibujan apiladas con un pequeño desfase,
+  // cada una arrastrable/seleccionable por separado.
+  const renderStack = (cards: CardInstance[]) => {
+    if (cards.length === 0) return null;
+    const stacked = cards.length > 1;
+    const w = stacked ? Math.round(battleW * 0.84) : battleW;
+    const h = Math.round(w * PORTRAIT_RATIO);
+    const dx = stacked ? Math.round(w * 0.2) : 0;
+    const dy = stacked ? Math.round(h * 0.05) : 0;
+    return (
+      <div
+        className="relative"
+        style={{ width: w + dx * (cards.length - 1), height: h + dy * (cards.length - 1) }}
+      >
+        {cards.map((card, i) => {
+          const isShip = card.def.tipo === 'Nave' && !card.attachedTo;
+          const links = isShip ? attachedTo(player, card.uid) : [];
+          return (
+            <div
+              key={card.uid}
+              className="absolute"
+              style={{ left: i * dx, top: i * dy, zIndex: i + 1 }}
+            >
+              <div className="relative">
+                {renderCard(card, w)}
+                {isShip ? shipStats(card) : null}
+                {hoverUid === card.uid && links.length > 0 ? (
+                  <span className="pointer-events-none absolute inset-x-0 top-0 bg-[rgba(8,9,11,0.82)] px-0.5 text-center text-[7px] leading-tight text-[var(--color-signal)]">
+                    {links.map((c) => c.def.nombre).join(' · ')}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
 
   const battle = (
     <PanelSection
       title="Zona de Batalla"
       titleSize="sm"
       cut={10}
+      accent="var(--color-zone-battle)"
       tone={active ? 'active' : 'default'}
       meta={battleCards.filter((c) => !c.attachedTo && c.def.tipo === 'Nave').length || undefined}
       className="min-h-0 flex-1"
       bodyClassName="min-h-0"
     >
-      <div
-        ref={battleRef}
-        className="grid h-full min-h-0 grid-cols-8 gap-1.5 overflow-hidden p-1.5"
-      >
+      <div ref={battleRef} className="grid h-full min-h-0 grid-cols-8 gap-1.5 overflow-hidden p-1.5">
         {Array.from({ length: BATTLE_SLOTS }, (_, slot) => {
-          const occ = occupantInSlot(slot);
-          const isShip = Boolean(occ && occ.def.tipo === 'Nave' && !occ.attachedTo);
-          const links = isShip && occ ? attachedTo(player, occ.uid) : [];
+          const cards = slotCards(slot);
           return (
             <Zone
               key={slot}
               zone="battle"
               droppable={isOwner}
-              overflow="overflow-hidden"
+              overflow="overflow-visible"
               highlighted={isTarget('battle')}
               onDropCard={(payload) => onDropCard(payload, 'battle', slot)}
               onClick={() => onZoneClick('battle', slot)}
-              className="flex min-h-0 flex-col items-center justify-center gap-0.5 p-1"
-              emptyHint={occ ? undefined : `${slot + 1}`}
+              className="relative flex min-h-0 items-center justify-center p-1"
+              emptyHint={cards.length === 0 ? `${slot + 1}` : undefined}
             >
-              {occ ? (
-                <>
-                  {renderCard(occ, battleW)}
-                  {isShip ? (
-                    <span className="hud-sub tabular text-[8px]">
-                      {effectiveAttack(player, occ)}/{effectiveDefense(player, occ)}
-                      {damageOn(occ) ? ` · dmg ${damageOn(occ)}` : ''}
-                      {occ.isToken ? ' · TKN' : ''}
-                    </span>
-                  ) : damageOn(occ) ? (
-                    <span className="hud-sub tabular text-[8px]">dmg {damageOn(occ)}</span>
-                  ) : null}
-                  {hoverUid === occ.uid && links.length > 0 ? (
-                    <span className="hud-sub text-[7px] leading-tight">
-                      {links.map((c) => c.def.nombre).join(' · ')}
-                    </span>
-                  ) : null}
-                </>
-              ) : null}
+              {renderStack(cards)}
             </Zone>
           );
         })}
@@ -235,6 +258,7 @@ export function PlayerBoard({
         title="Estación"
         titleSize="sm"
         cut={10}
+        accent="var(--color-zone-player)"
         className="min-h-0 shrink-0"
         bodyClassName="min-h-0"
         style={{ width: Math.max(132, stationW + 24) }}
@@ -272,6 +296,7 @@ export function PlayerBoard({
         title="Pilotos"
         titleSize="sm"
         cut={10}
+        accent="var(--color-zone-resources)"
         meta={reservePilots.length || undefined}
         className="min-h-0 min-w-0 flex-1"
         bodyClassName="min-h-0"
@@ -298,6 +323,7 @@ export function PlayerBoard({
         title="Recursos"
         titleSize="sm"
         cut={10}
+        accent="var(--color-zone-resources)"
         meta={resources.length ? `${readyResources(player).length}/${resources.length}` : undefined}
         className="min-h-0 min-w-0 flex-[1.4]"
         bodyClassName="min-h-0"
@@ -344,7 +370,7 @@ export function PlayerBoard({
                 className="btn btn--sm btn--ghost"
                 onClick={() => onHeatChange(0)}
                 disabled={heat === 0}
-                title="Disipar todo el calor"
+                title={heat === 0 ? 'No disponible: el calor ya está en 0.' : 'Disipar todo el calor (lo deja en 0)'}
               >
                 Purgar
               </button>
@@ -361,6 +387,7 @@ export function PlayerBoard({
         title="Vacío"
         titleSize="sm"
         cut={10}
+        accent="var(--color-zone-void)"
         meta={voidCards.length || undefined}
         className="min-h-0 shrink-0"
         bodyClassName="min-h-0"
@@ -427,7 +454,7 @@ export function PlayerBoard({
 
   return (
     <section
-      className="flex min-h-0 flex-1 flex-col gap-1.5 border-l-2 pl-1.5 transition-colors"
+      className={`flex min-h-0 flex-1 flex-col gap-1.5 border-l-2 pl-1.5 transition-colors ${active ? 'board--active' : ''}`}
       style={{ borderColor: active ? 'var(--color-signal)' : 'transparent' }}
       aria-label={`Tablero de ${label}`}
     >
@@ -444,11 +471,21 @@ export function PlayerBoard({
         {!player?.connected && !player?.left ? (
           <span className="hud-sub text-[var(--color-heat)]">Desconectado</span>
         ) : null}
-        {active ? <span className="hud-sub text-[var(--color-signal)]">● En turno</span> : null}
+        {active ? <span className="hud-sub turn-pill">● En turno</span> : null}
         <span className="ml-auto flex items-center gap-3">
-          <span className="hud-sub tabular">Mano {player?.handCount ?? 0}</span>
-          <span className="hud-sub tabular">Mazo {player?.deckCount ?? 0}</span>
-          <span className="hud-sub tabular">Recursos {readyResources(player).length}</span>
+          <span className="hud-sub tabular" title="Cartas en la mano">
+            Mano {player?.handCount ?? 0}
+          </span>
+          <span className="hud-sub tabular" title="Cartas que quedan en el mazo">
+            Mazo {player?.deckCount ?? 0}
+          </span>
+          <span
+            className="hud-sub tabular"
+            style={{ color: 'var(--color-zone-resources)' }}
+            title="Recursos listos (sin girar) para pagar costes"
+          >
+            Recursos {readyResources(player).length}
+          </span>
         </span>
       </header>
 

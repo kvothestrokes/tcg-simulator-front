@@ -119,7 +119,7 @@ describe('SETUP de estación', () => {
 });
 
 describe('TURN_START', () => {
-  it('roba una carta y enfría 5 CC, sin tocar el mazo compartido', () => {
+  it('draws a card, cools 5 heat and takes the automatic shared resource', () => {
     const next = reduceAll([
       event({
         sequence: 1,
@@ -130,7 +130,7 @@ describe('TURN_START', () => {
       event({
         sequence: 3,
         type: GameEventType.TurnStart,
-        data: { turn: 1, activePlayerId: 'user-1' },
+        data: { turn: 1, activePlayerId: 'user-1', resourceUid: 'res-auto', autoResource: true },
       }),
     ]);
     const player = next.players['user-1']!;
@@ -138,8 +138,10 @@ describe('TURN_START', () => {
     expect(player.deckCount).toBe(39);
     expect(player.handCount).toBe(1);
     expect(player.heat).toBe(2);
-    // El recurso compartido ya no es automático: se roba a mano (RESOURCE_DRAW).
-    expect(next.sharedResourceDeckCount).toBe(SHARED_RESOURCE_DECK_SIZE);
+    // The shared resource is automatic at the start of the turn (1 per turn).
+    expect(next.sharedResourceDeckCount).toBe(SHARED_RESOURCE_DECK_SIZE - 1);
+    expect(player.cards['res-auto']?.zone).toBe('resources');
+    expect(player.lastResourceDrawTurn).toBe(1);
   });
 
   it('endereza las cartas del jugador al iniciar su turno (refresco en Inicial)', () => {
@@ -165,7 +167,7 @@ describe('TURN_START', () => {
     expect(player.deckCount).toBe(39);
   });
 
-  it('declara derrota por deck-out si el mazo está vacío', () => {
+  it('declara derrota por deck-out si el mazo está vacío (a partir del turno 2)', () => {
     const next = reduceAll([
       event({
         sequence: 1,
@@ -182,7 +184,7 @@ describe('TURN_START', () => {
       event({
         sequence: 3,
         type: GameEventType.TurnStart,
-        data: { turn: 1, activePlayerId: 'user-1' },
+        data: { turn: 2, activePlayerId: 'user-1' },
       }),
     ]);
     expect(next.status).toBe('finished');

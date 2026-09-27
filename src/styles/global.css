@@ -30,6 +30,17 @@
   --color-heat-max: #f43f5e; /* calor por encima del umbral */
   --color-ok: #4ade80;
 
+  /* Semantic accents per zone/meaning, used sparingly on labels and badges
+     (never as panel fills) so the HUD stays monochrome by default. */
+  --color-zone-player: var(--color-signal); /* active player, station */
+  --color-zone-resources: #34d399; /* resources, pilots */
+  --color-zone-void: #fb7185; /* void, damage */
+  --color-zone-battle: #fbbf24; /* battle, tapped */
+  --color-zone-orders: #a78bfa; /* orders */
+  --color-zone-gear: #60a5fa; /* gear links */
+  --color-charge: #c084fc; /* "carga" counter */
+  --color-tapped: #fbbf24; /* "Agotada" badge */
+
   --font-display: 'Oxanium Variable', ui-sans-serif, system-ui, sans-serif;
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
 }
@@ -427,5 +438,196 @@
 
   .animate-ping-slow {
     animation: pulse-ring 2s ease-in-out infinite;
+  }
+
+  /* ---------------------------------------------------------------------------
+     Zone accents: `--zone-accent` tints a panel title and adds a short tick
+     before it. Set by PanelSection's `accent` prop.
+     ------------------------------------------------------------------------ */
+  .zone-accent .hud-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4em;
+    color: color-mix(in srgb, var(--zone-accent) 78%, var(--color-ink));
+  }
+
+  .zone-accent .hud-title::before {
+    content: '';
+    width: 0.55em;
+    height: 2px;
+    background: var(--zone-accent);
+    box-shadow: 0 0 6px var(--zone-accent);
+  }
+
+  /* Active player's half of the table: ring + soft glow + faint tint. */
+  .board--active {
+    border-radius: 4px;
+    background: linear-gradient(90deg, rgba(103, 232, 249, 0.05), transparent 45%);
+    box-shadow:
+      0 0 0 1px rgba(103, 232, 249, 0.28),
+      0 0 32px -14px var(--color-signal);
+  }
+
+  /* Pulsing "En turno" pill. */
+  .turn-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    padding: 0.1rem 0.45rem;
+    border: 1px solid rgba(103, 232, 249, 0.55);
+    background: rgba(103, 232, 249, 0.1);
+    color: var(--color-signal);
+    animation: turn-pill-pulse 2.4s ease-in-out infinite;
+  }
+
+  @keyframes turn-pill-pulse {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgba(103, 232, 249, 0);
+    }
+    50% {
+      box-shadow: 0 0 12px -2px rgba(103, 232, 249, 0.6);
+    }
+  }
+
+  /* Soft blurred glow behind the center strip. The ::before sits under the
+     strip and never takes pointer events. */
+  .center-glow {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .center-glow::before {
+    content: '';
+    position: absolute;
+    inset: -6px 12%;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(
+      ellipse at center,
+      rgba(103, 232, 249, 0.16),
+      rgba(167, 139, 250, 0.08) 45%,
+      transparent 72%
+    );
+    filter: blur(14px);
+  }
+
+  /* Phase chips (Inicial → Activación → Principal → Final). */
+  .phase-chip {
+    padding: 0.12rem 0.4rem;
+    font-family: var(--font-display);
+    font-size: 0.5625rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    line-height: 1.2;
+    border: 1px solid var(--color-stroke-faint);
+    color: var(--color-ink-faint);
+    transition:
+      color 140ms ease,
+      background-color 140ms ease,
+      border-color 140ms ease;
+  }
+
+  .phase-chip[data-state='past'] {
+    opacity: 0.45;
+    text-decoration: line-through;
+    text-decoration-color: rgba(255, 255, 255, 0.25);
+  }
+
+  .phase-chip[data-state='current'] {
+    color: #000;
+    background: var(--color-signal);
+    border-color: var(--color-signal);
+    box-shadow: 0 0 10px -2px rgba(103, 232, 249, 0.55);
+  }
+
+  /* Primary phase-advance button: gradient + glow. The glow lives on a
+     wrapper (filter: drop-shadow) because .btn is clipped by its clip-path,
+     which would cut a box-shadow off. */
+  .advance-glow {
+    display: inline-flex;
+    filter: drop-shadow(0 0 7px rgba(103, 232, 249, 0.35));
+    transition:
+      filter 140ms ease,
+      transform 140ms ease;
+  }
+
+  .advance-glow:hover:has(.btn:not(:disabled)) {
+    filter: drop-shadow(0 0 11px rgba(167, 139, 250, 0.55));
+    transform: scale(1.03);
+  }
+
+  .advance-glow:has(.btn:disabled) {
+    filter: none;
+  }
+
+  .btn--advance {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+    background: linear-gradient(100deg, #67e8f9, #818cf8 55%, #a78bfa);
+    border-color: rgba(103, 232, 249, 0.8);
+    color: #05060a;
+    text-align: left;
+  }
+
+  .btn--advance:hover:not(:disabled) {
+    background: linear-gradient(100deg, #a5f3fc, #a5b4fc 55%, #c4b5fd);
+    border-color: #a5f3fc;
+    color: #05060a;
+  }
+
+  .btn--advance:disabled {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: var(--color-stroke-dim);
+    color: var(--color-ink-dim);
+  }
+
+  .btn--advance__sub {
+    font-family: var(--font-sans);
+    font-size: 0.5625rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    text-transform: none;
+    opacity: 0.8;
+  }
+
+  /* "Agotada" label on a tapped board card. The card itself is rotated 90°,
+     so the badge is counter-rotated to read horizontally. */
+  .tapped-badge {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: 11;
+    transform: translate(-50%, -50%) rotate(-90deg);
+    padding: 0.05rem 0.3rem;
+    font-family: var(--font-display);
+    font-size: 0.5rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: #1a1204;
+    background: var(--color-tapped);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .turn-pill,
+    .animate-ping-slow {
+      animation: none;
+    }
+
+    .advance-glow,
+    .advance-glow:hover:has(.btn:not(:disabled)) {
+      transform: none;
+      transition: none;
+    }
+
+    .phase-chip {
+      transition: none;
+    }
   }
 }

@@ -7,18 +7,32 @@
  * plus the single station def. usePrivateDeck consumes this on SETUP so the deck
  * you built is the deck you draw from — never the hardcoded starter.
  *
- * When Supabase is disabled or no deck is selected, `ready` is false and the
- * caller falls back to the starter deck.
+ * It also checks the deck against the construction rules (deckLegality) and
+ * exposes `playBlock`, the Spanish reason why the match cannot start with it.
+ * There is no starter-deck fallback anymore (see lib/decks/matchGate): with no
+ * legal deck selected, `playBlock` is set and the table does not run SETUP.
+ *
+ * Pass `deckIdOverride` to resolve a deck other than the stored selection (the
+ * lobby does this while the player is choosing).
  */
 
 import { useEffect, useMemo, useState } from 'react';
 
 import type { CardDef } from '@/lib/game/types';
-import { findCard, hydrateCatalog, publicCardDef } from '@/lib/game/cards';
-import { isStation } from '@/lib/decks/validation';
+import type { DeckCardItem } from '@/lib/decks/mappers';
+import {
+  buildStarterDeck,
+  findCard,
+  getStarterStation,
+  hydrateCatalog,
+  publicCardDef,
+} from '@/lib/game/cards';
+import { deckLegality, isStation, type DeckLegality } from '@/lib/decks/validation';
+import { matchStartBlock } from '@/lib/decks/matchGate';
 import { getSelectedDeckId } from '@/lib/decks/selectedDeck';
 import { SUPABASE_ENABLED } from '@/lib/config';
 import { supabase } from '@/lib/session';
+import { isTestMode } from '@/lib/testMode';
 
 export interface Loadout {
   deckId: string | null;
@@ -30,6 +44,15 @@ export interface Loadout {
   loading: boolean;
   /** True when a deck was resolved into a non-empty loadout. */
   ready: boolean;
+  /**
+   * True once resolution finished for the current deck id (success, failure or
+   * no deck selected). The automatic SETUP waits for it.
+   */
+  resolved: boolean;
+  /** Construction-rule check of the resolved deck (null until resolved or with no deck). */
+  legality: DeckLegality | null;
+  /** Spanish reason why this loadout cannot start a match, or null when it can. */
+  playBlock: string | null;
 }
 
 const EMPTY: Loadout = {
@@ -39,20 +62,46 @@ const EMPTY: Loadout = {
   station: null,
   loading: false,
   ready: false,
+  resolved: false,
+  legality: null,
+  playBlock: null,
 };
 
-export function useSelectedLoadout(userId: string | undefined): Loadout {
-  const deckId = useMemo(() => getSelectedDeckId(userId), [userId]);
-  const [loadout, setLoadout] = useState<Loadout>(EMPTY);
+function gate(
+  deckId: string | null,
+  deckExists: boolean,
+  resolved: boolean,
+  legality: DeckLegality | null,
+): string | null {
+  return matchStartBlock({ selectedDeckId: deckId, deckExists, resolved, legality });
+}
+
+export function useSelectedLoadout(
+  userId: string | undefined,
+  deckIdOverride?: string | null,
+): Loadout {
+  const stored = useMemo(() => getSelectedDeckId(userId), [userId]);
+  const deckId = deckIdOverride === undefined ? stored : deckIdOverride;
+  // Offline test mode (only via the `test` URL param, only for the table's own
+  // loadout): the sample deck, explicitly exempt from the match-start gate. It
+  // can never be legal (4 playable sample cards), and there is no Supabase deck.
+  const [testMode] = useState(() => deckIdOverride === undefined && isTestMode());
+  const [loadout, setLoadout] = useState<Loadout>(() => (testMode ? testLoadout() : EMPTY));
 
   useEffect(() => {
+    if (testMode) return;
     if (!SUPABASE_ENABLED || !deckId) {
-      setLoadout({ ...EMPTY, deckId: deckId ?? null });
+      setLoadout({
+        ...EMPTY,
+        deckId: deckId ?? null,
+        resolved: true,
+        playBlock: gate(deckId ?? null, false, true, null),
+      });
       return;
     }
 
     let active = true;
-    setLoadout({ ...EMPTY, deckId, loading: true });
+    setLoadout({ ...EMPTY, deckId, loading: true, playBlock: gate(deckId, true, false, null) });
 
     void (async () => {
       // Make sure findCard() resolves DB-backed cards, not just the fallback.
@@ -69,10 +118,13 @@ export function useSelectedLoadout(userId: string | undefined): Loadout {
 
         const cardIds: string[] = [];
         let station: CardDef | null = null;
+        const rows = (cardRows ?? []) as DeckCardItem[];
+        const catalog = new Map<string, CardDef>();
 
-        for (const row of (cardRows ?? []) as { card_id: string; qty: number }[]) {
+        for (const row of rows) {
           const def = findCard(row.card_id);
           if (!def) continue;
+          catalog.set(def.id, def);
           if (isStation(def.tipo)) {
             station = publicCardDef(def);
             continue;
@@ -80,6 +132,8 @@ export function useSelectedLoadout(userId: string | undefined): Loadout {
           for (let i = 0; i < row.qty; i++) cardIds.push(row.card_id);
         }
 
+        const legality = deckLegality(rows, catalog);
+        const deckExists = Boolean(deckRow);
         setLoadout({
           deckId,
           deckName: (deckRow as { nombre?: string } | null)?.nombre ?? null,
@@ -87,16 +141,41 @@ export function useSelectedLoadout(userId: string | undefined): Loadout {
           station,
           loading: false,
           ready: cardIds.length > 0,
+          resolved: true,
+          legality,
+          playBlock: gate(deckId, deckExists, true, legality),
         });
       } catch {
-        if (active) setLoadout({ ...EMPTY, deckId });
+        if (active) {
+          setLoadout({
+            ...EMPTY,
+            deckId,
+            resolved: true,
+            playBlock: 'No se pudo cargar tu mazo. Vuelve a intentarlo.',
+          });
+        }
       }
     })();
 
     return () => {
       active = false;
     };
-  }, [deckId]);
+  }, [deckId, testMode]);
 
   return loadout;
+}
+
+/** Test-mode loadout: sample deck + sample station, no gate (see lib/testMode). */
+function testLoadout(): Loadout {
+  return {
+    deckId: 'test-sample-deck',
+    deckName: 'Mazo de ejemplo (prueba)',
+    cardIds: buildStarterDeck(),
+    station: getStarterStation(),
+    loading: false,
+    ready: true,
+    resolved: true,
+    legality: null,
+    playBlock: null,
+  };
 }

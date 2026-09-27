@@ -188,28 +188,69 @@ export function validateAddCard(
 
 // ─── deckLegality ─────────────────────────────────────────────────────────────
 
+/** One broken deck-construction rule, structured so each UI can word it. */
+export type DeckIssue =
+  | { code: 'card_count'; count: number }
+  | { code: 'station_missing' }
+  | { code: 'station_extra'; count: number }
+  | { code: 'too_many_copies'; cardId: string; nombre: string; qty: number; max: number }
+  | { code: 'unknown_card'; cardId: string };
+
+export interface DeckLegality {
+  ok: boolean;
+  /** English messages, one per issue (same order). */
+  errors: string[];
+  issues: DeckIssue[];
+}
+
+function issueToEnglish(issue: DeckIssue): string {
+  switch (issue.code) {
+    case 'card_count':
+      return `Deck must have exactly ${DECK_RULES.MAX_DECK_CARDS} cards (has ${issue.count}).`;
+    case 'station_missing':
+      return 'Deck must include 1 space station.';
+    case 'station_extra':
+      return `A deck may only include ${DECK_RULES.MAX_STATIONS} space station (has ${issue.count}).`;
+    case 'too_many_copies':
+      return `Too many copies of "${issue.nombre}" (${issue.qty}, max ${issue.max}).`;
+    case 'unknown_card':
+      return `Card "${issue.cardId}" is not in the catalog.`;
+  }
+}
+
 /**
  * Whether a deck is legal to take into a match.
  *
- * A legal deck has exactly DECK_RULES.MAX_DECK_CARDS non-station cards and at
- * most one station. Returns every broken rule so the UI can list them.
+ * A legal deck has exactly DECK_RULES.MAX_DECK_CARDS non-station cards, exactly
+ * one station (single copy), at most DECK_RULES.MAX_COPIES copies of any other
+ * card, and only cards the catalog knows. Returns every broken rule, the card
+ * count always first, so the UI can list them.
  */
 export function deckLegality(
   items: readonly DeckCardItem[],
   catalog: ReadonlyMap<string, CardDef>,
-): { ok: boolean; errors: string[] } {
-  const errors: string[] = [];
+): DeckLegality {
+  const issues: DeckIssue[] = [];
   const nonStation = countNonStationCards(items, catalog);
   const stations = countStations(items, catalog);
 
   if (nonStation !== DECK_RULES.MAX_DECK_CARDS) {
-    errors.push(
-      `Deck must have exactly ${DECK_RULES.MAX_DECK_CARDS} cards (has ${nonStation}).`,
-    );
+    issues.push({ code: 'card_count', count: nonStation });
   }
-  if (stations > DECK_RULES.MAX_STATIONS) {
-    errors.push(`A deck may only include ${DECK_RULES.MAX_STATIONS} space station.`);
+  if (stations === 0) issues.push({ code: 'station_missing' });
+  if (stations > DECK_RULES.MAX_STATIONS) issues.push({ code: 'station_extra', count: stations });
+
+  for (const item of items) {
+    const def = catalog.get(item.card_id);
+    if (!def) {
+      issues.push({ code: 'unknown_card', cardId: item.card_id });
+      continue;
+    }
+    const max = maxCopiesFor(def.tipo);
+    if (item.qty > max) {
+      issues.push({ code: 'too_many_copies', cardId: def.id, nombre: def.nombre, qty: item.qty, max });
+    }
   }
 
-  return { ok: errors.length === 0, errors };
+  return { ok: issues.length === 0, errors: issues.map(issueToEnglish), issues };
 }

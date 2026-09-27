@@ -56,6 +56,8 @@ interface PanelSectionProps {
   cut?: number;
   titleSize?: 'sm' | 'md' | 'lg';
   style?: CSSProperties;
+  /** Semantic accent color (CSS value) for the title tick, e.g. var(--color-zone-void). */
+  accent?: string;
 }
 
 const TITLE_SIZE: Record<'sm' | 'md' | 'lg', string> = {
@@ -75,14 +77,15 @@ export function PanelSection({
   cut = 12,
   titleSize = 'md',
   style,
+  accent,
 }: PanelSectionProps) {
   return (
     <Panel
       tone={tone}
       cut={cut}
-      className={className}
+      className={`${accent ? 'zone-accent' : ''} ${className}`}
       innerClassName="flex flex-col"
-      style={style}
+      style={accent ? { ['--zone-accent' as string]: accent, ...style } : style}
     >
       <header className="flex shrink-0 items-baseline justify-between gap-2 px-2.5 pt-1.5 pb-1">
         <h3 className={`hud-title ${TITLE_SIZE[titleSize]}`}>{title}</h3>

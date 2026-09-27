@@ -60,6 +60,7 @@ export function CardViewerModal({ def, instance, onClose }: CardViewerModalProps
             className="btn btn--sm"
             onClick={onClose}
             aria-label="Cerrar visualizador"
+            title="Cerrar la vista ampliada"
           >
             Cerrar
           </button>

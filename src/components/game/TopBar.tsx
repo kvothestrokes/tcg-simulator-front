@@ -25,6 +25,7 @@ interface TopBarProps {
   canAct: boolean;
   onFinish: () => void;
   onLeave: () => void;
+  onOpenRules: () => void;
 }
 
 const CONNECTION_LABEL: Record<ConnectionState, string> = {
@@ -47,6 +48,7 @@ export function TopBar({
   canAct: _canAct,
   onFinish,
   onLeave,
+  onOpenRules,
 }: TopBarProps) {
   const [copied, setCopied] = useState(false);
   const online = connection === 'connected';
@@ -68,12 +70,17 @@ export function TopBar({
       <div className="flex items-center gap-2">
         <span className="hud-sub">Sala</span>
         <span className="display text-base tracking-[0.25em]">{code}</span>
-        <button type="button" className="btn btn--sm btn--ghost" onClick={() => void copy()}>
+        <button
+          type="button"
+          className="btn btn--sm btn--ghost"
+          onClick={() => void copy()}
+          title="Copia el enlace de la sala para pasárselo a tu rival"
+        >
           {copied ? 'Copiado' : 'Copiar enlace'}
         </button>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2" title="Estado de la conexión en tiempo real con el servidor">
         <StatusDot on={online} pulse={connection === 'syncing' || connection === 'reconnecting'} />
         <span className="hud-sub">{CONNECTION_LABEL[connection]}</span>
         {latencyMs !== null && online ? (
@@ -86,6 +93,7 @@ export function TopBar({
         <span
           className="hud-sub border border-[var(--color-stroke-faint)] px-2 py-0.5"
           style={isMyTurn ? { color: 'var(--color-signal)', borderColor: 'var(--color-signal)' } : undefined}
+          title={isMyTurn ? `Fase actual (tu turno): ${phase}` : `Fase actual: ${phase}`}
         >
           {phase}
         </span>
@@ -94,13 +102,31 @@ export function TopBar({
 
         <button
           type="button"
+          className="btn btn--sm"
+          onClick={onOpenRules}
+          title="Abre el resumen de las reglas tal como las aplica el simulador"
+        >
+          Reglamento
+        </button>
+        <button
+          type="button"
           className="btn btn--sm btn--danger"
           onClick={onFinish}
           disabled={status === 'finished'}
+          title={
+            status === 'finished'
+              ? 'No disponible: la partida ya terminó.'
+              : 'Cierra la sala en el servidor para los dos jugadores'
+          }
         >
           Terminar
         </button>
-        <button type="button" className="btn btn--sm btn--ghost" onClick={onLeave}>
+        <button
+          type="button"
+          className="btn btn--sm btn--ghost"
+          onClick={onLeave}
+          title="Abandona la partida, libera tu asiento y vuelve al hangar"
+        >
           Salir
         </button>
       </div>

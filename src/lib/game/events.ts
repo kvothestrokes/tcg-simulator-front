@@ -54,6 +54,18 @@ export const GameEventType = {
   Shuffle: 'SHUFFLE',
   /** Vacía el tablero para empezar otra partida en la misma sala. */
   Reset: 'RESET',
+  /** Activates an Order from hand: pays its cost and sends it to the void. */
+  ActivateOrder: 'ACTIVATE_ORDER',
+  /** Extra Draw: draw 1 and heat +1 (once per turn, own turn only). */
+  ExtraDraw: 'EXTRA_DRAW',
+  /** Reveals the top N cards of the deck to its owner. Log only: nothing moves. */
+  Reveal: 'REVEAL',
+  /** Routes the revealed cards (hand / top / bottom / void) in one atomic step. */
+  RevealResolve: 'REVEAL_RESOLVE',
+  /** Top card of the deck to the void. */
+  Mill: 'MILL',
+  /** Top card of the deck: Ship or Gear to resources, anything else to the void. */
+  Recycle: 'RECYCLE',
 } as const;
 
 export type GameEventName = (typeof GameEventType)[keyof typeof GameEventType];
@@ -73,6 +85,11 @@ export interface SetupData {
   deckName?: string;
   /** Estación inicial revelada en zona pública; no cuenta como carta del mazo. */
   station?: CardDef;
+  /**
+   * Cards drawn right after setup, in the same event. Absent on legacy events,
+   * which drew nothing.
+   */
+  openingHand?: number;
 }
 
 export interface DrawData {
@@ -88,6 +105,11 @@ export interface PlayData {
   faceUp: boolean;
   attachedTo?: string;
   isToken?: boolean;
+  /**
+   * The reducer pays the card's cost automatically (hand → battle / pilots /
+   * station). Absent on legacy events, which were replayed without charging.
+   */
+  payCost?: boolean;
 }
 
 export interface MoveData {
@@ -150,6 +172,11 @@ export interface TurnStartData {
   activePlayerId: string;
   /** Uid de la carta de recurso que sale del mazo compartido (si queda). */
   resourceUid?: string;
+  /**
+   * The active player takes `resourceUid` from the shared deck automatically.
+   * Absent on legacy events, where the resource was drawn by hand.
+   */
+  autoResource?: boolean;
 }
 
 export interface LinkData {
@@ -194,4 +221,34 @@ export interface DiceData {
 
 export interface ShuffleData {
   deckCount: number;
+}
+
+export interface ActivateOrderData {
+  uid: string;
+  def: CardDef;
+}
+
+export type RevealRoute = 'hand' | 'top' | 'bottom' | 'void';
+
+export const REVEAL_ROUTES: readonly RevealRoute[] = ['hand', 'top', 'bottom', 'void'];
+
+export interface RevealData {
+  count: number;
+}
+
+/**
+ * Routing of the top `count` cards, by position (index 0 = top of the deck).
+ * Private destinations travel as positions only, so the opponent learns counts,
+ * never identities. Void cards become public, so they carry uid and definition.
+ */
+export interface RevealResolveData {
+  count: number;
+  routes: RevealRoute[];
+  voidCards: { index: number; uid: string; def: CardDef }[];
+}
+
+/** Top card of the deck, revealed because it goes to a public zone. */
+export interface TopCardData {
+  uid: string;
+  def: CardDef;
 }

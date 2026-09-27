@@ -19,8 +19,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { buildStarterDeck, findCard } from '../lib/game/cards';
-import { GameEventType } from '../lib/game/events';
-import type { CardDef } from '../lib/game/types';
+import { drawTop, removeByUid, routeRevealed, type Piles } from '../lib/game/deckOps';
+import { GameEventType, type RevealRoute } from '../lib/game/events';
+import { rejectionReason } from '../lib/game/state';
+import type { CardDef, GameState } from '../lib/game/types';
 import { randomUuid } from '../lib/realtime/client';
 import type { WireEvent } from '../lib/realtime/protocol';
 
@@ -41,13 +43,16 @@ export interface PrivateDeck {
   /** Tamaño del mazo que se declarará al preparar la partida. */
   deckSize: number;
   /**
-   * Aplica uno de TUS eventos ya persistidos. Ignora los del rival y los que ya
-   * se hubieran aplicado antes.
+   * Aplica uno de TUS eventos ya persistidos (y el TURN_START que te da el
+   * turno, lo declare quien lo declare). Ignora los del rival, los que ya se
+   * aplicaron y los que el reducer rechaza según `before`.
    */
-  applyOwnEvent: (event: WireEvent) => void;
+  applyOwnEvent: (event: WireEvent, before?: GameState) => void;
   /** Borra el estado local (no declara nada). */
   forget: () => void;
 }
+
+const EMPTY_PILES: Piles<PrivateCard> = { deck: [], hand: [] };
 
 /**
  * @param loadoutCardIds  Cartas del mazo elegido (ids repetidos por copia, sin la
@@ -63,8 +68,8 @@ export function usePrivateDeck(
     [roomCode, userId],
   );
 
-  const [deck, setDeck] = useState<PrivateCard[]>([]);
-  const [hand, setHand] = useState<PrivateCard[]>([]);
+  // Deck and hand live in ONE state object so every move is a single pure update.
+  const [piles, setPiles] = useState<Piles<PrivateCard>>(EMPTY_PILES);
 
   // La lista de cartas elegida se consulta dentro del manejador de SETUP, que es
   // síncrono; por eso se guarda en una ref además de la prop.
@@ -85,8 +90,7 @@ export function usePrivateDeck(
     loadedKey.current = storageKey;
 
     const stored = readStored(storageKey);
-    setDeck(hydrate(stored?.deck ?? []));
-    setHand(hydrate(stored?.hand ?? []));
+    setPiles({ deck: hydrate(stored?.deck ?? []), hand: hydrate(stored?.hand ?? []) });
     appliedSequence.current = stored?.appliedSequence ?? 0;
     dirty.current = false;
   }, [storageKey]);
@@ -95,68 +99,98 @@ export function usePrivateDeck(
   useEffect(() => {
     if (!storageKey || !dirty.current) return;
     writeStored(storageKey, {
-      deck: deck.map((c) => ({ uid: c.uid, cardId: c.def.id })),
-      hand: hand.map((c) => ({ uid: c.uid, cardId: c.def.id })),
+      deck: piles.deck.map((c) => ({ uid: c.uid, cardId: c.def.id })),
+      hand: piles.hand.map((c) => ({ uid: c.uid, cardId: c.def.id })),
       appliedSequence: appliedSequence.current,
     });
-  }, [storageKey, deck, hand]);
+  }, [storageKey, piles]);
 
   const applyOwnEvent = useCallback(
-    (event: WireEvent) => {
-      if (!userId || event.playerId !== userId) return;
+    (event: WireEvent, before?: GameState) => {
+      if (!userId) return;
+      const data = (event.data ?? {}) as Record<string, unknown>;
+      // The opponent declares the TURN_START that hands you the turn, and that
+      // turn's draw comes from YOUR deck.
+      // Same fallback as the reducer: a TURN_START without activePlayerId is the actor's.
+      const turnForMe =
+        event.type === GameEventType.TurnStart &&
+        (data.activePlayerId ?? event.playerId) === userId;
+      if (event.playerId !== userId && !turnForMe) return;
       if (event.sequence <= appliedSequence.current) return;
       appliedSequence.current = event.sequence;
       dirty.current = true;
 
-      const data = (event.data ?? {}) as Record<string, unknown>;
+      // The shared board ignored it, so the hidden cards must not move either.
+      if (before && rejectionReason(before, event)) return;
 
       switch (event.type) {
         case GameEventType.Setup: {
           const chosen = loadoutRef.current;
           const ids = chosen.length > 0 ? chosen : buildStarterDeck();
-          setDeck(shuffleArray(buildDeck(ids)));
-          setHand([]);
+          const deck = shuffleArray(buildDeck(ids));
+          const opening = Math.max(0, Math.min(20, Math.round(Number(data.openingHand ?? 0)) || 0));
+          setPiles(drawTop({ deck, hand: [] }, opening));
           break;
         }
 
         case GameEventType.Draw: {
           const count = Math.max(0, Number(data.count ?? 1));
-          setDeck((current) => {
-            const taken = current.slice(0, count);
-            setHand((currentHand) => [...currentHand, ...taken]);
-            return current.slice(taken.length);
-          });
+          setPiles((current) => drawTop(current, count));
           break;
         }
 
         case GameEventType.TurnStart: {
-          setDeck((current) => {
-            if (current.length === 0) return current;
-            const taken = current.slice(0, 1);
-            setHand((currentHand) => [...currentHand, ...taken]);
-            return current.slice(1);
-          });
+          // Passing the turn to the opponent is your event too, but not your draw.
+          if (turnForMe) setPiles((current) => drawTop(current, 1));
+          break;
+        }
+
+        case GameEventType.ExtraDraw: {
+          setPiles((current) => drawTop(current, 1));
           break;
         }
 
         case GameEventType.Shuffle: {
-          setDeck((current) => shuffleArray(current));
+          setPiles((current) => ({ ...current, deck: shuffleArray(current.deck) }));
           break;
         }
 
         case GameEventType.Play: {
           const uid = String(data.uid ?? '');
           if (data.from === 'hand') {
-            setHand((current) => removeCard(current, uid));
+            setPiles((current) => ({ ...current, hand: removeByUid(current.hand, uid) }));
           } else if (data.from === 'deck') {
-            setDeck((current) => removeCard(current, uid));
+            setPiles((current) => ({ ...current, deck: removeByUid(current.deck, uid) }));
           }
+          break;
+        }
+
+        case GameEventType.ActivateOrder: {
+          const uid = String(data.uid ?? '');
+          setPiles((current) => ({ ...current, hand: removeByUid(current.hand, uid) }));
+          break;
+        }
+
+        case GameEventType.RevealResolve: {
+          const routes = (Array.isArray(data.routes) ? data.routes : []) as RevealRoute[];
+          // Void cards are public now: the reducer put them on the board.
+          setPiles((current) => {
+            const { deck, hand } = routeRevealed(current, routes);
+            return { deck, hand };
+          });
+          break;
+        }
+
+        case GameEventType.Mill:
+        case GameEventType.Recycle: {
+          const uid = String(data.uid ?? '');
+          setPiles((current) => ({ ...current, deck: removeByUid(current.deck, uid) }));
           break;
         }
 
         case GameEventType.ToHand: {
           const card = cardFromEvent(data);
-          if (card) setHand((current) => [...current, card]);
+          if (card) setPiles((current) => ({ ...current, hand: [...current.hand, card] }));
           break;
         }
 
@@ -164,17 +198,16 @@ export function usePrivateDeck(
           const card = cardFromEvent(data);
           if (!card) break;
           const position = String(data.position ?? 'shuffle');
-          setDeck((current) => {
-            if (position === 'top') return [card, ...current];
-            if (position === 'bottom') return [...current, card];
-            return shuffleArray([card, ...current]);
+          setPiles((current) => {
+            if (position === 'top') return { ...current, deck: [card, ...current.deck] };
+            if (position === 'bottom') return { ...current, deck: [...current.deck, card] };
+            return { ...current, deck: shuffleArray([card, ...current.deck]) };
           });
           break;
         }
 
         case GameEventType.Reset: {
-          setDeck([]);
-          setHand([]);
+          setPiles(EMPTY_PILES);
           break;
         }
 
@@ -186,8 +219,7 @@ export function usePrivateDeck(
   );
 
   const forget = useCallback(() => {
-    setDeck([]);
-    setHand([]);
+    setPiles(EMPTY_PILES);
     appliedSequence.current = 0;
     dirty.current = false;
     if (storageKey) writeStored(storageKey, null);
@@ -195,7 +227,7 @@ export function usePrivateDeck(
 
   const deckSize = loadoutCardIds.length > 0 ? loadoutCardIds.length : STARTER_SIZE;
 
-  return { deck, hand, deckSize, applyOwnEvent, forget };
+  return { deck: piles.deck, hand: piles.hand, deckSize, applyOwnEvent, forget };
 }
 
 const STARTER_SIZE = buildStarterDeck().length;
@@ -209,17 +241,6 @@ function buildDeck(cardIds: string[]): PrivateCard[] {
     if (def) cards.push({ uid: randomUuid(), def });
   }
   return cards;
-}
-
-/**
- * Quita una carta por uid. Si no está (por ejemplo, al reconstruir la partida
- * en otro dispositivo, donde el barajado fue distinto) quita la primera, para
- * que el contador siga cuadrando con lo que ve el rival.
- */
-function removeCard(cards: PrivateCard[], uid: string): PrivateCard[] {
-  const index = cards.findIndex((card) => card.uid === uid);
-  if (index === -1) return cards.slice(1);
-  return [...cards.slice(0, index), ...cards.slice(index + 1)];
 }
 
 function cardFromEvent(data: Record<string, unknown>): PrivateCard | null {

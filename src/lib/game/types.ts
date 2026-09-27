@@ -142,6 +142,8 @@ export interface PlayerState {
   ready: boolean;
   /** Turno en el que el jugador robó del mazo compartido (regla: 1 por turno). */
   lastResourceDrawTurn?: number;
+  /** Turn in which the player used their Extra Draw (rule: 1 per turn). */
+  lastExtraDrawTurn?: number;
 }
 
 export interface LogEntry {
@@ -179,6 +181,13 @@ export const HEAT_COOLDOWN = 5;
 
 export const RESOURCE_MAX = 15;
 
+/** Cards drawn automatically right after SETUP. */
+export const OPENING_HAND_SIZE = 5;
+/** Heat added by an Extra Draw. */
+export const EXTRA_DRAW_HEAT = 1;
+/** Maximum cards a single Reveal can look at. */
+export const REVEAL_MAX = 5;
+
 export const PILOT_SLOTS = 6;
 export const BATTLE_SLOTS = 8;
 export const GEAR_MAX_PER_SHIP = 2;
@@ -186,6 +195,8 @@ export const SHARED_RESOURCE_DECK_SIZE = 15;
 export const COMBAT_DECK_SIZE = 40;
 
 export const DAMAGE_COUNTER = 'daño';
+/** Manual "carga" marker (no automatic rule reads it). */
+export const CHARGE_COUNTER = 'carga';
 
 export const PHASES = ['Inicial', 'Activación', 'Principal', 'Final'] as const;
 export type Phase = (typeof PHASES)[number];

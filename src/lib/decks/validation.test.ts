@@ -298,3 +298,49 @@ describe('deckLegality', () => {
     expect(result.errors[0]).toContain('exactly 40');
   });
 });
+
+describe('deckLegality — full rule set', () => {
+  const forty = Array.from({ length: 40 }, (_, i) => makeCard(`c${i}`, 'Nave'));
+  const station = makeCard('s1', 'Estación');
+
+  it('requires a station', () => {
+    const catalog = makeCatalog(...forty);
+    const result = deckLegality(forty.map((c) => item(c.id, 1)), catalog);
+    expect(result.ok).toBe(false);
+    expect(result.issues).toContainEqual({ code: 'station_missing' });
+  });
+
+  it('rejects more than max copies of a card even at 40 cards', () => {
+    const few = Array.from({ length: 10 }, (_, i) => makeCard(`d${i}`, 'Nave'));
+    const catalog = makeCatalog(...few, station);
+    const items = [...few.map((c) => item(c.id, 4)), item('s1', 1)];
+    const result = deckLegality(items, catalog);
+    expect(result.ok).toBe(false);
+    expect(result.issues.filter((i) => i.code === 'too_many_copies')).toHaveLength(10);
+  });
+
+  it('rejects a second copy of the station', () => {
+    const catalog = makeCatalog(...forty, station);
+    const items = [...forty.map((c) => item(c.id, 1)), item('s1', 2)];
+    const result = deckLegality(items, catalog);
+    expect(result.ok).toBe(false);
+    expect(result.issues).toContainEqual(
+      expect.objectContaining({ code: 'too_many_copies', cardId: 's1', max: 1 }),
+    );
+  });
+
+  it('rejects cards missing from the catalog', () => {
+    const catalog = makeCatalog(...forty.slice(1), station);
+    const items = [...forty.map((c) => item(c.id, 1)), item('s1', 1)];
+    const result = deckLegality(items, catalog);
+    expect(result.ok).toBe(false);
+    expect(result.issues).toContainEqual({ code: 'unknown_card', cardId: 'c0' });
+  });
+
+  it('keeps the card count as the first error', () => {
+    const catalog = makeCatalog(station);
+    const result = deckLegality([item('s1', 1)], catalog);
+    expect(result.issues[0]).toEqual({ code: 'card_count', count: 0 });
+    expect(result.errors).toHaveLength(result.issues.length);
+  });
+});

@@ -10,6 +10,22 @@ import { getCardSize } from '../../lib/card/getCardTypeFields';
 import { stripKeywordMarkers } from '../../lib/card/extractKeywords';
 import type { CardDef, CardInstance } from '../../lib/game/types';
 
+/**
+ * Color y etiqueta por tipo de contador, para distinguirlos de un vistazo sobre
+ * la carta: daño (rojo), escudo (cian), marca (naranja) y carga (violeta, ⚡).
+ */
+const COUNTER_STYLE: Record<string, { color: string; label: string }> = {
+  daño: { color: 'var(--color-heat-max)', label: 'D' },
+  escudo: { color: 'var(--color-signal)', label: 'E' },
+  marca: { color: 'var(--color-heat)', label: 'M' },
+  carga: { color: 'var(--color-charge)', label: '⚡' },
+};
+
+const DEFAULT_COUNTER_STYLE = (key: string) => ({
+  color: 'rgba(255,255,255,0.85)',
+  label: key.slice(0, 1).toUpperCase(),
+});
+
 interface CardTileProps {
   def: CardDef;
   /** Instancia en mesa; ausente si la carta está en la mano. */
@@ -49,8 +65,10 @@ export function CardTile({
   const height = nativeH * scale;
   const counters = Object.entries(instance?.counters ?? {}).filter(([, v]) => v !== 0);
   const tooltip = faceDown
-    ? 'Carta boca abajo'
-    : `${def.nombre} — ${stripKeywordMarkers(def.texto_efecto ?? '')}`.trim();
+    ? tapped
+      ? 'Carta boca abajo (agotada)'
+      : 'Carta boca abajo'
+    : `${def.nombre}${tapped ? ' (agotada)' : ''} — ${stripKeywordMarkers(def.texto_efecto ?? '')}`.trim();
 
   return (
     <button
@@ -98,17 +116,28 @@ export function CardTile({
         </span>
       )}
 
+      {tapped ? (
+        <span className="tapped-badge" aria-hidden="true">
+          Agotada
+        </span>
+      ) : null}
+
       {counters.length > 0 ? (
         <span className="absolute -top-1 -right-1 z-10 flex gap-0.5">
-          {counters.map(([key, value]) => (
-            <span
-              key={key}
-              className="tabular border border-[var(--color-signal)] bg-[var(--color-void)] px-1 text-[9px] leading-tight text-[var(--color-signal)]"
-              title={key}
-            >
-              {value > 0 ? `+${value}` : value}
-            </span>
-          ))}
+          {counters.map(([key, value]) => {
+            const style = COUNTER_STYLE[key] ?? DEFAULT_COUNTER_STYLE(key);
+            return (
+              <span
+                key={key}
+                className="tabular border bg-[var(--color-void)] px-1 text-[9px] leading-tight"
+                style={{ color: style.color, borderColor: style.color }}
+                title={`${key}: ${value}`}
+              >
+                {style.label}
+                {value}
+              </span>
+            );
+          })}
         </span>
       ) : null}
     </button>
