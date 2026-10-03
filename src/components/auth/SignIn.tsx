@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type SyntheticEvent } from 'react';
 
+import { HeroShip } from '../ui/HeroShip';
 import { Panel } from '../ui/Panel';
 import { StatusDot } from '../ui/StatusDot';
 import { Wordmark } from '../ui/Wordmark';
@@ -108,12 +109,16 @@ export function SignIn() {
     <div className="relative w-full max-w-lg">
       <div className="orbit-rings" aria-hidden="true" />
       <div className="relative z-[1]">
-      <Wordmark size="lg" withRules className="mb-3" />
-      <p className="mb-8 text-center text-sm text-[var(--color-ink-dim)]">
+      <div className="menu-enter mx-auto mb-4 max-w-[220px]">
+        <HeroShip />
+      </div>
+      <Wordmark size="lg" withRules animated className="mb-3" />
+      <p className="menu-enter mb-8 text-center text-sm text-[var(--color-ink-dim)]" style={{ ['--i' as string]: 2 }}>
         Mesa virtual para partidas 1v1. Tú declaras las jugadas; el simulador solo las
         transmite y las recuerda.
       </p>
 
+      <div className="menu-enter menu-tile" style={{ ['--i' as string]: 3 }}>
       <Panel cut={16} innerClassName="p-6">
         {!SUPABASE_ENABLED ? (
           <p className="mb-6 text-xs text-[var(--color-ink-faint)]">
@@ -136,14 +141,16 @@ export function SignIn() {
                 value={callsign}
                 onChange={(e) => setCallsign(e.target.value)}
               />
-              <button
-                type="button"
-                className="btn btn--primary shrink-0"
-                onClick={() => void handleGuest()}
-                disabled={busy || !captchaReady}
-              >
-                Entrar
-              </button>
+              <span className="btn-launch w-auto shrink-0">
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  onClick={() => void handleGuest()}
+                  disabled={busy || !captchaReady}
+                >
+                  Despegar
+                </button>
+              </span>
             </div>
             <p className="mt-2 text-[11px] text-[var(--color-ink-faint)]">
               Sin correo. Conservas el asiento en este dispositivo hasta que cierres sesión.
@@ -189,8 +196,12 @@ export function SignIn() {
           </p>
         ) : null}
       </Panel>
+      </div>
 
-      <footer className="mt-5 flex items-center justify-center gap-2 text-[11px] text-[var(--color-ink-faint)]">
+      <footer
+        className="menu-enter mt-5 flex items-center justify-center gap-2 text-[11px] text-[var(--color-ink-faint)]"
+        style={{ ['--i' as string]: 4 }}
+      >
         <StatusDot on={health?.status === 'ok'} pulse />
         <span className="hud-sub">
           {healthError

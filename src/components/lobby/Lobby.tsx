@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useMemo, useState, type SyntheticEvent } from 'react';
 
 import { RulesModal } from '../game/RulesModal';
+import { HeroShip, MissionEmblem } from '../ui/HeroShip';
 import { Panel, PanelSection } from '../ui/Panel';
 import { StatusDot } from '../ui/StatusDot';
 import { Wordmark } from '../ui/Wordmark';
@@ -179,14 +180,13 @@ export function Lobby() {
       <div className="orbit-rings" aria-hidden="true" />
       <div className="relative z-[1] flex flex-col gap-8">
       {rulesOpen ? <RulesModal onClose={() => setRulesOpen(false)} /> : null}
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <Wordmark size="md" />
+      <header className="menu-enter flex flex-wrap items-center justify-between gap-4">
+        <Wordmark size="md" animated />
         <div className="flex items-center gap-3 text-xs">
-          <span className="hud-sub">
+          <span className="hud-sub flex items-center gap-2">
+            <span className="player-badge">{identity.label.charAt(0).toUpperCase()}</span>
             {identity.label}
-            <span className="ml-2 text-[var(--color-stroke-dim)]">
-              #{shortName(identity.userId)}
-            </span>
+            <span className="text-[var(--color-stroke-dim)]">#{shortName(identity.userId)}</span>
           </span>
           <button
             type="button"
@@ -210,9 +210,27 @@ export function Lobby() {
         </div>
       </header>
 
+      {/* --- hero ----------------------------------------------------------- */}
+      <section className="menu-enter grid items-center gap-6 md:grid-cols-[1fr_minmax(0,320px)]" style={{ ['--i' as string]: 1 }}>
+        <div>
+          <p className="menu-kicker mb-3">Hangar · Estación orbital</p>
+          <h1 className="text-aurora text-3xl leading-tight sm:text-4xl">
+            Elige tu misión
+            <span className="menu-caret" aria-hidden="true" />
+          </h1>
+          <p className="mt-3 max-w-md text-sm text-[var(--color-ink-dim)]">
+            Prepara tu mazo, abre una sala o únete a la de tu rival. La flota espera tus
+            órdenes, piloto.
+          </p>
+        </div>
+        <HeroShip className="mx-auto hidden max-w-[320px] md:block" />
+      </section>
+
       {/* --- elegir mazo ---------------------------------------------------- */}
       {decksEnabled ? (
-        <PanelSection title="Tu mazo" titleSize="lg" cut={16} bodyClassName="p-4 pt-2">
+        <div className="menu-enter menu-tile" style={{ ['--i' as string]: 2 }}>
+        <PanelSection title="Tu mazo" titleSize="lg" cut={16} bodyClassName="relative p-4 pt-2">
+          <MissionEmblem kind="deck" />
           <p className="mb-4 text-sm text-[var(--color-ink-dim)]">
             Elige con qué mazo vas a jugar. Serán las únicas cartas disponibles en la
             partida.
@@ -275,11 +293,14 @@ export function Lobby() {
             </p>
           ) : null}
         </PanelSection>
+        </div>
       ) : null}
 
-      <div className="grid gap-5 md:grid-cols-2">
+      <div className="menu-enter grid gap-5 md:grid-cols-2" style={{ ['--i' as string]: 3 }}>
         {/* --- crear ------------------------------------------------------- */}
-        <PanelSection title="Nueva partida" titleSize="lg" cut={16} bodyClassName="p-4 pt-2">
+        <div className="menu-tile flex">
+        <PanelSection title="Nueva partida" titleSize="lg" cut={16} className="flex-1" bodyClassName="relative p-4 pt-2">
+          <MissionEmblem kind="launch" />
           <p className="mb-4 text-sm text-[var(--color-ink-dim)]">
             Creas la sala y ocupas el asiento 1. Comparte el código con tu rival para que
             ocupe el 2.
@@ -297,22 +318,27 @@ export function Lobby() {
             onChange={(e) => setCustomCode(e.target.value.toUpperCase().replace(/[^A-Z2-9]/g, ''))}
           />
 
-          <button
-            type="button"
-            className="btn btn--primary w-full"
-            onClick={() => void handleCreate()}
-            disabled={busy !== null || !deckReady}
-            title={startBlock ? `No disponible: ${startBlock}` : 'Crea la sala y ocupa el asiento 1'}
-          >
-            {busy === 'create' ? 'Creando…' : 'Crear sala'}
-          </button>
+          <span className="btn-launch">
+            <button
+              type="button"
+              className="btn btn--primary w-full"
+              onClick={() => void handleCreate()}
+              disabled={busy !== null || !deckReady}
+              title={startBlock ? `No disponible: ${startBlock}` : 'Crea la sala y ocupa el asiento 1'}
+            >
+              {busy === 'create' ? 'Creando…' : 'Crear sala'}
+            </button>
+          </span>
           <p className="mt-2 text-[11px] text-[var(--color-ink-faint)]">
             Sin caracteres ambiguos: nada de 0, O, 1, I ni L.
           </p>
         </PanelSection>
+        </div>
 
         {/* --- entrar ------------------------------------------------------ */}
-        <PanelSection title="Entrar a una sala" titleSize="lg" cut={16} bodyClassName="p-4 pt-2">
+        <div className="menu-tile flex">
+        <PanelSection title="Entrar a una sala" titleSize="lg" cut={16} className="flex-1" bodyClassName="relative p-4 pt-2">
+          <MissionEmblem kind="dock" />
           <p className="mb-4 text-sm text-[var(--color-ink-dim)]">
             Introduce el código que te pasaron. Si ya estabas en esa partida, vuelves a tu
             mismo asiento.
@@ -346,6 +372,7 @@ export function Lobby() {
             </button>
           </form>
         </PanelSection>
+        </div>
       </div>
 
       {error ? (
@@ -359,6 +386,8 @@ export function Lobby() {
         <PanelSection
           title="Partidas recientes"
           tone="dim"
+          className="menu-enter"
+          style={{ ['--i' as string]: 4 }}
           bodyClassName="p-2"
           meta={`${recent.length}`}
         >
@@ -385,7 +414,7 @@ export function Lobby() {
         </PanelSection>
       ) : null}
 
-      <Panel tone="dim" cut={10} innerClassName="px-4 py-3">
+      <Panel tone="dim" cut={10} className="menu-enter" style={{ ['--i' as string]: 5 }} innerClassName="px-4 py-3">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[var(--color-ink-faint)]">
           <span className="flex items-center gap-2">
             <StatusDot on={health?.status === 'ok'} pulse />

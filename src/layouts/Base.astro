@@ -7,12 +7,15 @@ interface Props {
   description?: string;
   /** La mesa ocupa toda la ventana y no debe hacer scroll. */
   fullscreen?: boolean;
+  /** Intensidad del fondo: 'menu' animado, 'game' sereno para no distraer. */
+  backdrop?: 'menu' | 'game';
 }
 
 const {
   title,
   description = 'Simulador de mesa virtual para Cosmic Breaker.',
   fullscreen = false,
+  backdrop = fullscreen ? 'game' : 'menu',
 } = Astro.props;
 ---
 
@@ -33,7 +36,7 @@ const {
     />
   </head>
   <body class={fullscreen ? 'relative z-[1] h-dvh overflow-hidden' : 'relative z-[1] min-h-dvh'}>
-    <CosmicBackdrop />
+    <CosmicBackdrop variant={backdrop} />
     <slot />
   </body>
 </html>

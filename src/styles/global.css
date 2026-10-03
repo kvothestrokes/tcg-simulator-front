@@ -750,16 +750,6 @@
     }
   }
 
-  @keyframes star-twinkle {
-    0%,
-    100% {
-      opacity: 0.35;
-    }
-    50% {
-      opacity: 0.9;
-    }
-  }
-
   @keyframes orbit-spin {
     to {
       transform: rotate(360deg);
@@ -900,12 +890,21 @@
     animation-direction: reverse;
   }
 
+  /* ---------------------------------------------------------------------------
+     Fondo cósmico. Solo se animan transform y opacity (compositor, sin
+     repintar). z-index -1 dentro del stacking context de <body>: queda bajo
+     cualquier contenido, posicionado o no.
+     ------------------------------------------------------------------------ */
   .cosmic-backdrop {
     pointer-events: none;
     position: fixed;
     inset: 0;
-    z-index: 0;
+    z-index: -1;
     overflow: hidden;
+    contain: strict;
+    background:
+      radial-gradient(ellipse 80% 50% at 50% 115%, rgba(76, 29, 149, 0.35), transparent 70%),
+      linear-gradient(180deg, #05060d 0%, #070a18 55%, #0a0620 100%);
   }
 
   .cosmic-backdrop__nebula {
@@ -916,43 +915,209 @@
       radial-gradient(ellipse 45% 35% at 82% 18%, rgba(14, 116, 144, 0.32), transparent 60%),
       radial-gradient(ellipse 55% 50% at 50% 88%, rgba(192, 38, 211, 0.18), transparent 65%),
       radial-gradient(ellipse 30% 25% at 70% 60%, rgba(103, 232, 249, 0.12), transparent 70%);
-    animation: nebula-drift 28s ease-in-out infinite;
+    animation: nebula-drift 40s ease-in-out infinite;
   }
 
+  /* Galaxia: el disco se inclina con un transform estático en el contenedor y
+     solo gira el SVG interior, que se rasteriza una vez. */
+  .cosmic-backdrop__galaxy {
+    position: absolute;
+    top: -14%;
+    left: -10%;
+    width: min(72vw, 860px);
+    aspect-ratio: 1;
+    opacity: 0.8;
+    transform: rotate(-24deg) scaleY(0.42);
+  }
+
+  .cosmic-backdrop__galaxy-disc {
+    display: block;
+    width: 100%;
+    height: 100%;
+    animation: orbit-spin 420s linear infinite;
+  }
+
+  /* Estrellas en tres capas de parallax. Cada capa es un tile SVG repetido y
+     se desplaza exactamente un tile, así el bucle no tiene costura. */
   .cosmic-backdrop__stars {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: calc(-1 * var(--tile));
+    background-repeat: repeat;
+    background-size: var(--tile) var(--tile);
+    animation: stars-drift var(--drift) linear infinite;
+  }
+
+  .cosmic-backdrop__stars--far {
+    --tile: 512px;
+    --drift: 260s;
+    opacity: 0.75;
+  }
+
+  .cosmic-backdrop__stars--mid {
+    --tile: 640px;
+    --drift: 170s;
+  }
+
+  .cosmic-backdrop__stars--near {
+    --tile: 768px;
+    --drift: 95s;
+  }
+
+  .cosmic-backdrop__twinkle {
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    margin: -9px 0 0 -9px;
+    background:
+      radial-gradient(circle, #fff 0 1.2px, rgba(186, 230, 253, 0.55) 2.2px, transparent 5px),
+      linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.75), transparent) center / 100% 1px no-repeat,
+      linear-gradient(0deg, transparent, rgba(255, 255, 255, 0.75), transparent) center / 1px 100% no-repeat;
+    animation: twinkle var(--twinkle-dur) ease-in-out infinite;
+  }
+
+  .cosmic-backdrop__planet {
+    position: absolute;
+    right: -7vw;
+    bottom: -12vh;
+    width: min(44vw, 500px);
+    aspect-ratio: 1;
+    opacity: 0.9;
+    animation: planet-float 30s ease-in-out infinite;
+  }
+
+  .cosmic-backdrop__planet svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* --- Naves --------------------------------------------------------------- */
+  .cosmic-backdrop__fleet {
     position: absolute;
     inset: 0;
   }
 
-  .cosmic-backdrop__stars--a {
-    background-image:
-      radial-gradient(1px 1px at 8% 12%, #fff, transparent),
-      radial-gradient(1px 1px at 22% 38%, #bae6fd, transparent),
-      radial-gradient(1.5px 1.5px at 41% 18%, #fff, transparent),
-      radial-gradient(1px 1px at 63% 8%, #e9d5ff, transparent),
-      radial-gradient(1px 1px at 78% 26%, #fff, transparent),
-      radial-gradient(1.5px 1.5px at 91% 14%, #a5f3fc, transparent),
-      radial-gradient(1px 1px at 14% 62%, #fff, transparent),
-      radial-gradient(1px 1px at 33% 78%, #f5d0fe, transparent),
-      radial-gradient(1.5px 1.5px at 55% 54%, #fff, transparent),
-      radial-gradient(1px 1px at 72% 71%, #fff, transparent),
-      radial-gradient(1px 1px at 88% 82%, #c4b5fd, transparent),
-      radial-gradient(1px 1px at 47% 91%, #fff, transparent);
-    animation: star-twinkle 4.8s ease-in-out infinite;
+  .ship {
+    position: absolute;
+    top: var(--y);
+    left: 0;
+    width: var(--w);
+    aspect-ratio: 2;
+    animation: ship-fly var(--dur) linear var(--delay) infinite;
   }
 
-  .cosmic-backdrop__stars--b {
-    opacity: 0.7;
-    background-image:
-      radial-gradient(1px 1px at 11% 28%, #fff, transparent),
-      radial-gradient(1px 1px at 29% 8%, #ddd6fe, transparent),
-      radial-gradient(1px 1px at 52% 33%, #fff, transparent),
-      radial-gradient(1px 1px at 68% 44%, #67e8f9, transparent),
-      radial-gradient(1px 1px at 84% 58%, #fff, transparent),
-      radial-gradient(1px 1px at 6% 86%, #fff, transparent),
-      radial-gradient(1px 1px at 38% 48%, #f0abfc, transparent),
-      radial-gradient(1px 1px at 96% 36%, #fff, transparent);
-    animation: star-twinkle 6.4s ease-in-out infinite reverse;
+  .ship svg,
+  .ship__wing svg {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  .ship--cruiser {
+    aspect-ratio: 200 / 56;
+    opacity: 0.6;
+  }
+
+  .ship--far {
+    opacity: 0.45;
+  }
+
+  .ship--reverse {
+    animation-name: ship-fly-reverse;
+  }
+
+  .ship--warp {
+    animation-name: ship-warp;
+    animation-timing-function: cubic-bezier(0.7, 0, 0.3, 1);
+  }
+
+  .ship__wing {
+    position: absolute;
+    inset: 0;
+    display: block;
+  }
+
+  .ship__wing--top {
+    transform: translate(-115%, -95%) scale(0.85);
+  }
+
+  .ship__wing--bottom {
+    transform: translate(-115%, 95%) scale(0.85);
+  }
+
+  .ship__trail {
+    position: absolute;
+    top: 50%;
+    right: 90%;
+    width: calc(var(--w) * 1.5);
+    height: 2px;
+    margin-top: -1px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, transparent, rgba(103, 232, 249, 0.75));
+    transform-origin: 100% 50%;
+    animation: trail-flicker 0.5s ease-in-out infinite alternate;
+  }
+
+  .ship__trail--hot {
+    background: linear-gradient(90deg, transparent, rgba(232, 121, 249, 0.85));
+  }
+
+  .ship__trail--wide {
+    right: 94%;
+    height: 14px;
+    margin-top: -7px;
+    background: linear-gradient(90deg, transparent, rgba(103, 232, 249, 0.35));
+  }
+
+  .ship__trail--long {
+    width: calc(var(--w) * 5);
+    height: 3px;
+  }
+
+  .cosmic-backdrop__meteor {
+    position: absolute;
+    top: var(--top);
+    left: var(--left);
+    width: 170px;
+    height: 1.5px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #fff, rgba(103, 232, 249, 0.55) 25%, transparent);
+    opacity: 0;
+    animation: meteor var(--dur) ease-in var(--delay) infinite;
+  }
+
+  /* En la mesa el fondo acompaña sin distraer: las capas a pantalla completa
+     quedan quietas y solo cruzan unas pocas naves lejanas. */
+  .cosmic-backdrop--game .cosmic-backdrop__nebula,
+  .cosmic-backdrop--game .cosmic-backdrop__galaxy-disc,
+  .cosmic-backdrop--game .cosmic-backdrop__stars,
+  .cosmic-backdrop--game .cosmic-backdrop__planet {
+    animation: none;
+  }
+
+  .cosmic-backdrop--game .cosmic-backdrop__galaxy {
+    opacity: 0.4;
+  }
+
+  .cosmic-backdrop--game .cosmic-backdrop__planet {
+    top: 38%;
+    right: -70px;
+    bottom: auto;
+    width: min(20vw, 220px);
+    opacity: 0.32;
+  }
+
+  .cosmic-backdrop--game .cosmic-backdrop__fleet {
+    opacity: 0.55;
+  }
+
+  .cosmic-backdrop--game .cosmic-backdrop__twinkle {
+    opacity: 0.6;
   }
 
   .cosmic-backdrop__grid {
@@ -969,6 +1134,344 @@
     position: absolute;
     inset: 0;
     background: radial-gradient(ellipse at center, transparent 45%, rgba(5, 6, 13, 0.72) 100%);
+  }
+
+  /* ---------------------------------------------------------------------------
+     Menús: entrada escalonada, tarjetas que reaccionan y la nave del hero.
+     ------------------------------------------------------------------------ */
+
+  /* fill-mode backwards (no both): al terminar no queda ningún transform
+     aplicado que convierta la sección en containing block de los modales. */
+  .menu-enter {
+    animation: menu-enter 640ms var(--ease-out-soft) backwards;
+    animation-delay: calc(var(--i, 0) * 90ms);
+  }
+
+  .menu-tile {
+    position: relative;
+    isolation: isolate;
+    transition: transform 260ms var(--ease-out-soft);
+  }
+
+  .menu-tile::before {
+    content: '';
+    position: absolute;
+    inset: -14px;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(ellipse at 50% 55%, rgba(103, 232, 249, 0.2), rgba(139, 92, 246, 0.1) 45%, transparent 72%);
+    opacity: 0;
+    transition: opacity 260ms var(--ease-out-soft);
+  }
+
+  .menu-tile:hover,
+  .menu-tile:focus-within {
+    transform: translateY(-3px);
+  }
+
+  .menu-tile:hover::before,
+  .menu-tile:focus-within::before {
+    opacity: 1;
+  }
+
+  .menu-tile__emblem {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.8rem;
+    width: 3.25rem;
+    height: 3.25rem;
+    color: var(--color-signal);
+    opacity: 0.22;
+    pointer-events: none;
+    transition:
+      opacity 260ms var(--ease-out-soft),
+      transform 260ms var(--ease-out-soft);
+  }
+
+  .menu-tile:hover .menu-tile__emblem {
+    opacity: 0.5;
+    transform: rotate(-8deg) scale(1.08);
+  }
+
+  .menu-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-family: var(--font-display);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--color-signal);
+  }
+
+  .menu-kicker::before {
+    content: '';
+    width: 1.75rem;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--color-signal));
+  }
+
+  .menu-caret {
+    display: inline-block;
+    width: 0.55em;
+    height: 1em;
+    margin-left: 0.2em;
+    vertical-align: -0.12em;
+    background: var(--color-signal);
+    animation: caret-blink 1.1s steps(1) infinite;
+  }
+
+  /* El glow vive en un ::before porque .btn está recortado por su clip-path. */
+  .btn-launch {
+    position: relative;
+    isolation: isolate;
+    display: inline-flex;
+    width: 100%;
+  }
+
+  .btn-launch::before {
+    content: '';
+    position: absolute;
+    inset: -8px -6px;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, rgba(232, 121, 249, 0.45), rgba(103, 232, 249, 0.18) 50%, transparent 72%);
+    animation: launch-glow 2.8s ease-in-out infinite;
+  }
+
+  .btn-launch:has(.btn:disabled)::before {
+    display: none;
+  }
+
+  .hero-ship {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 240 / 110;
+    animation: hero-float 7s ease-in-out infinite;
+  }
+
+  .hero-ship svg {
+    position: relative;
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  .hero-ship__flame {
+    position: absolute;
+    right: 88%;
+    width: 34%;
+    height: 7%;
+    margin-top: -3.5%;
+    border-radius: 999px 0 0 999px;
+    background: linear-gradient(90deg, transparent, rgba(232, 121, 249, 0.55) 35%, #67e8f9 80%, #fff);
+    filter: blur(1px);
+    transform-origin: 100% 50%;
+    animation: flame-flicker 0.22s ease-in-out infinite alternate;
+  }
+
+  .hero-ship__glow {
+    position: absolute;
+    top: 50%;
+    right: 82%;
+    width: 30%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(103, 232, 249, 0.45), transparent 65%);
+    transform: translate(0, -50%);
+    animation: twinkle 1.6s ease-in-out infinite;
+    --twinkle-scale: 1;
+  }
+
+  .orbit-glyph--spin {
+    animation: orbit-spin 26s linear infinite;
+  }
+
+  .wordmark-intro {
+    animation: wordmark-intro 1100ms var(--ease-out-soft) backwards;
+  }
+
+  .wordmark-glow {
+    filter: drop-shadow(0 0 18px rgba(139, 92, 246, 0.45));
+  }
+
+  @keyframes stars-drift {
+    to {
+      transform: translate3d(calc(-1 * var(--tile)), 0, 0);
+    }
+  }
+
+  @keyframes twinkle {
+    0%,
+    100% {
+      opacity: 0.2;
+      transform: scale(calc(var(--twinkle-scale, 1) * 0.55));
+    }
+    50% {
+      opacity: 1;
+      transform: scale(var(--twinkle-scale, 1));
+    }
+  }
+
+  @keyframes planet-float {
+    0%,
+    100% {
+      transform: translate3d(0, 0, 0) rotate(0deg);
+    }
+    50% {
+      transform: translate3d(-1.5%, -2.5%, 0) rotate(-2deg);
+    }
+  }
+
+  @keyframes ship-fly {
+    from {
+      transform: translate3d(calc(-100% - 12vw), 0, 0);
+    }
+    to {
+      transform: translate3d(112vw, var(--dy, 0), 0);
+    }
+  }
+
+  @keyframes ship-fly-reverse {
+    from {
+      transform: translate3d(112vw, 0, 0) scaleX(-1);
+    }
+    to {
+      transform: translate3d(calc(-100% - 12vw), var(--dy, 0), 0) scaleX(-1);
+    }
+  }
+
+  /* Cruce relámpago y luego una larga pausa fuera de pantalla. */
+  @keyframes ship-warp {
+    0% {
+      opacity: 0;
+      transform: translate3d(calc(-100% - 30vw), 0, 0);
+    }
+    2% {
+      opacity: 1;
+    }
+    14% {
+      opacity: 1;
+      transform: translate3d(112vw, var(--dy, 0), 0);
+    }
+    14.01%,
+    100% {
+      opacity: 0;
+      transform: translate3d(112vw, var(--dy, 0), 0);
+    }
+  }
+
+  @keyframes trail-flicker {
+    from {
+      opacity: 0.65;
+      transform: scaleX(0.85);
+    }
+    to {
+      opacity: 1;
+      transform: scaleX(1.08);
+    }
+  }
+
+  @keyframes meteor {
+    0% {
+      opacity: 0;
+      transform: rotate(-35deg) translate3d(0, 0, 0);
+    }
+    1% {
+      opacity: 1;
+    }
+    6% {
+      opacity: 0;
+      transform: rotate(-35deg) translate3d(-460px, 0, 0);
+    }
+    100% {
+      opacity: 0;
+      transform: rotate(-35deg) translate3d(-460px, 0, 0);
+    }
+  }
+
+  @keyframes menu-enter {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 18px, 0) scale(0.985);
+    }
+  }
+
+  @keyframes wordmark-intro {
+    from {
+      opacity: 0;
+      transform: translate3d(0, -8px, 0) scale(1.06);
+    }
+  }
+
+  @keyframes caret-blink {
+    50% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes launch-glow {
+    0%,
+    100% {
+      opacity: 0.25;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  @keyframes hero-float {
+    0%,
+    100% {
+      transform: translate3d(0, 0, 0) rotate(-2deg);
+    }
+    50% {
+      transform: translate3d(0, -10px, 0) rotate(1deg);
+    }
+  }
+
+  @keyframes flame-flicker {
+    from {
+      opacity: 0.75;
+      transform: scaleX(0.82);
+    }
+    to {
+      opacity: 1;
+      transform: scaleX(1.12);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cosmic-backdrop__fleet,
+    .cosmic-backdrop__meteor {
+      display: none;
+    }
+
+    .cosmic-backdrop__galaxy-disc,
+    .cosmic-backdrop__planet,
+    .cosmic-backdrop__twinkle,
+    .menu-enter,
+    .menu-caret,
+    .btn-launch,
+    .hero-ship,
+    .hero-ship__flame,
+    .hero-ship__glow,
+    .orbit-glyph--spin,
+    .wordmark-intro {
+      animation: none;
+    }
+
+    .menu-tile,
+    .menu-tile__emblem {
+      transition: none;
+    }
+
+    .menu-tile:hover,
+    .menu-tile:focus-within {
+      transform: none;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {

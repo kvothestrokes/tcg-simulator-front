@@ -1,14 +1,282 @@
 ---
 /**
- * Fondo cósmico compartido: nebulosas, estrellas y viñeta.
- * pointer-events none; el movimiento se apaga con prefers-reduced-motion.
+ * Fondo cósmico compartido: galaxia, nebulosas, estrellas en parallax, planeta,
+ * naves y estrellas fugaces.
+ *
+ * Rendimiento: todo es SVG/CSS estático generado en build. Solo se animan
+ * `transform` y `opacity`, que el navegador resuelve en el compositor sin
+ * repintar. `variant="game"` deja quietas las capas a pantalla completa para
+ * que la mesa (con paneles translúcidos encima) no se recomponga entera en
+ * cada frame. Con prefers-reduced-motion no se mueve nada.
  */
+import { spiralArmPath, spiralDust, starfieldTile } from '@/lib/ui/starfield';
+
+interface Props {
+  variant?: 'menu' | 'game';
+}
+
+const { variant = 'menu' } = Astro.props;
+const isMenu = variant === 'menu';
+
+const starsFar = starfieldTile({ count: 140, size: 512, seed: 11, minR: 0.3, maxR: 0.9 });
+const starsMid = starfieldTile({ count: 60, size: 640, seed: 23, minR: 0.5, maxR: 1.3 });
+const starsNear = starfieldTile({ count: 18, size: 768, seed: 37, minR: 0.9, maxR: 1.9 });
+
+const GALAXY = { cx: 300, cy: 300, a: 8, b: 0.21, turns: 2.6 };
+const arms = [0, Math.PI].map((phase) => spiralArmPath({ ...GALAXY, phase }));
+const dust = spiralDust({ ...GALAXY, seed: 5, count: isMenu ? 260 : 140, spread: 34 });
+
+const twinkles = [
+  { x: '12%', y: '18%', d: '3.8s', s: 1 },
+  { x: '86%', y: '12%', d: '5.2s', s: 0.8 },
+  { x: '64%', y: '36%', d: '4.4s', s: 0.6 },
+  { x: '24%', y: '72%', d: '6s', s: 0.9 },
+  { x: '92%', y: '64%', d: '4.9s', s: 0.7 },
+  { x: '44%', y: '8%', d: '5.6s', s: 0.6 },
+];
 ---
 
-<div class="cosmic-backdrop" aria-hidden="true">
+<div class:list={['cosmic-backdrop', `cosmic-backdrop--${variant}`]} aria-hidden="true">
+  <svg width="0" height="0" class="absolute">
+    <defs>
+      <linearGradient id="cb-hull" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#cbd5e1" />
+        <stop offset="0.45" stop-color="#64748b" />
+        <stop offset="1" stop-color="#1e293b" />
+      </linearGradient>
+      <linearGradient id="cb-hull-dark" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#475569" />
+        <stop offset="1" stop-color="#0f172a" />
+      </linearGradient>
+      <linearGradient id="cb-canopy" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#a5f3fc" />
+        <stop offset="1" stop-color="#0e7490" />
+      </linearGradient>
+      <radialGradient id="cb-engine">
+        <stop offset="0" stop-color="#ffffff" />
+        <stop offset="0.35" stop-color="#67e8f9" />
+        <stop offset="1" stop-color="#67e8f9" stop-opacity="0" />
+      </radialGradient>
+      <radialGradient id="cb-engine-hot">
+        <stop offset="0" stop-color="#ffffff" />
+        <stop offset="0.35" stop-color="#e879f9" />
+        <stop offset="1" stop-color="#e879f9" stop-opacity="0" />
+      </radialGradient>
+
+      <!-- Todas las naves apuntan hacia +x; la dirección se invierte con CSS. -->
+      <symbol id="cb-ship-fighter" viewBox="0 0 64 32">
+        <circle cx="5" cy="16" r="6" fill="url(#cb-engine)" />
+        <path
+          d="M62 16 L42 10.5 L24 9.5 L15 2.5 L9 2.5 L13 10 L6 12 L6 20 L13 22 L9 29.5 L15 29.5 L24 22.5 L42 21.5 Z"
+          fill="url(#cb-hull)"
+          stroke="#67e8f9"
+          stroke-opacity="0.55"
+          stroke-width="0.6"
+        />
+        <path d="M15 2.5 L20 9.8 M15 29.5 L20 22.2" stroke="#e879f9" stroke-width="1.2" />
+        <ellipse cx="42" cy="16" rx="7.5" ry="2.6" fill="url(#cb-canopy)" />
+        <rect x="24" y="15.3" width="12" height="1.4" fill="#0f172a" opacity="0.6" />
+      </symbol>
+
+      <symbol id="cb-ship-scout" viewBox="0 0 48 24">
+        <circle cx="4" cy="12" r="5" fill="url(#cb-engine-hot)" />
+        <path
+          d="M47 12 L20 4 L8 7 L12 12 L8 17 L20 20 Z"
+          fill="url(#cb-hull)"
+          stroke="#e879f9"
+          stroke-opacity="0.6"
+          stroke-width="0.6"
+        />
+        <path d="M20 4 L26 12 L20 20" fill="none" stroke="#0f172a" stroke-width="0.8" opacity="0.6" />
+        <ellipse cx="32" cy="12" rx="5" ry="1.8" fill="url(#cb-canopy)" />
+      </symbol>
+
+      <symbol id="cb-ship-cruiser" viewBox="0 0 200 56">
+        <circle cx="10" cy="22" r="9" fill="url(#cb-engine)" />
+        <circle cx="10" cy="34" r="9" fill="url(#cb-engine)" />
+        <path
+          d="M198 30 L170 24 L150 18 L120 16 L112 8 L84 8 L78 16 L30 16 L16 20 L14 40 L30 44 L120 44 L150 42 L170 36 Z"
+          fill="url(#cb-hull-dark)"
+          stroke="#a78bfa"
+          stroke-opacity="0.45"
+          stroke-width="0.8"
+        />
+        <path d="M30 30 H160" stroke="#67e8f9" stroke-opacity="0.35" stroke-width="0.8" />
+        <path d="M88 8 L92 2 L104 2 L108 8" fill="#334155" stroke="#a78bfa" stroke-opacity="0.4" stroke-width="0.6" />
+        <g fill="#67e8f9">
+          <rect x="40" y="22" width="3" height="1.4" />
+          <rect x="52" y="22" width="3" height="1.4" />
+          <rect x="64" y="22" width="3" height="1.4" />
+          <rect x="76" y="22" width="3" height="1.4" opacity="0.4" />
+          <rect x="124" y="22" width="3" height="1.4" />
+          <rect x="136" y="22" width="3" height="1.4" opacity="0.5" />
+          <rect x="94" y="11" width="8" height="1.6" />
+        </g>
+        <g fill="#fbbf24">
+          <rect x="46" y="36" width="2" height="1.4" />
+          <rect x="70" y="36" width="2" height="1.4" />
+          <rect x="110" y="36" width="2" height="1.4" />
+        </g>
+      </symbol>
+    </defs>
+  </svg>
+
   <div class="cosmic-backdrop__nebula"></div>
-  <div class="cosmic-backdrop__stars cosmic-backdrop__stars--a"></div>
-  <div class="cosmic-backdrop__stars cosmic-backdrop__stars--b"></div>
+
+  <div class="cosmic-backdrop__galaxy">
+    <svg class="cosmic-backdrop__galaxy-disc" viewBox="0 0 600 600">
+      <defs>
+        <radialGradient id="cb-galaxy-core">
+          <stop offset="0" stop-color="#fff7ed" />
+          <stop offset="0.12" stop-color="#f5d0fe" stop-opacity="0.95" />
+          <stop offset="0.35" stop-color="#a78bfa" stop-opacity="0.45" />
+          <stop offset="0.7" stop-color="#4c1d95" stop-opacity="0.12" />
+          <stop offset="1" stop-color="#4c1d95" stop-opacity="0" />
+        </radialGradient>
+        <linearGradient id="cb-galaxy-arm" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#67e8f9" />
+          <stop offset="0.5" stop-color="#a78bfa" />
+          <stop offset="1" stop-color="#e879f9" />
+        </linearGradient>
+        <filter id="cb-galaxy-blur" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="12" />
+        </filter>
+      </defs>
+      <circle cx="300" cy="300" r="290" fill="url(#cb-galaxy-core)" />
+      <g filter="url(#cb-galaxy-blur)" fill="none" stroke="url(#cb-galaxy-arm)" stroke-linecap="round">
+        {arms.map((d) => <path d={d} stroke-width="34" stroke-opacity="0.32" />)}
+      </g>
+      <g fill="none" stroke="#e0e7ff" stroke-linecap="round" stroke-opacity="0.1">
+        {arms.map((d) => <path d={d} stroke-width="3" />)}
+      </g>
+      <g>
+        {dust.map((s) => <circle cx={s.x} cy={s.y} r={s.r} fill={s.color} opacity={s.opacity} />)}
+      </g>
+      <circle cx="300" cy="300" r="22" fill="#fff" opacity="0.85" filter="url(#cb-galaxy-blur)" />
+    </svg>
+  </div>
+
+  <div class="cosmic-backdrop__stars cosmic-backdrop__stars--far" style={`background-image:${starsFar}`}></div>
+  <div class="cosmic-backdrop__stars cosmic-backdrop__stars--mid" style={`background-image:${starsMid}`}></div>
+  <div class="cosmic-backdrop__stars cosmic-backdrop__stars--near" style={`background-image:${starsNear}`}></div>
+
+  {
+    twinkles.map((t) => (
+      <span
+        class="cosmic-backdrop__twinkle"
+        style={`left:${t.x};top:${t.y};--twinkle-dur:${t.d};--twinkle-scale:${t.s}`}
+      />
+    ))
+  }
+
+  <div class="cosmic-backdrop__planet">
+    <svg viewBox="0 0 400 400">
+      <defs>
+        <radialGradient id="cb-planet" cx="0.35" cy="0.3" r="0.8">
+          <stop offset="0" stop-color="#c4b5fd" />
+          <stop offset="0.35" stop-color="#6d28d9" />
+          <stop offset="0.75" stop-color="#1e1b4b" />
+          <stop offset="1" stop-color="#05060d" />
+        </radialGradient>
+        <radialGradient id="cb-planet-glow">
+          <stop offset="0.6" stop-color="#8b5cf6" stop-opacity="0.35" />
+          <stop offset="1" stop-color="#8b5cf6" stop-opacity="0" />
+        </radialGradient>
+        <linearGradient id="cb-ring" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#67e8f9" stop-opacity="0" />
+          <stop offset="0.3" stop-color="#67e8f9" stop-opacity="0.7" />
+          <stop offset="0.7" stop-color="#e879f9" stop-opacity="0.6" />
+          <stop offset="1" stop-color="#e879f9" stop-opacity="0" />
+        </linearGradient>
+        <clipPath id="cb-ring-front">
+          <rect x="0" y="200" width="400" height="200" />
+        </clipPath>
+      </defs>
+      <circle cx="200" cy="200" r="190" fill="url(#cb-planet-glow)" />
+      <g transform="rotate(-18 200 200)">
+        <ellipse cx="200" cy="200" rx="185" ry="38" fill="none" stroke="url(#cb-ring)" stroke-width="7" opacity="0.55" />
+      </g>
+      <circle cx="200" cy="200" r="118" fill="url(#cb-planet)" />
+      <g opacity="0.25" fill="none" stroke="#e9d5ff" stroke-width="5">
+        <path d="M90 170 Q200 150 312 176" />
+        <path d="M84 214 Q200 196 316 220" stroke-width="3" />
+        <path d="M100 252 Q200 238 300 258" />
+      </g>
+      <g transform="rotate(-18 200 200)" clip-path="url(#cb-ring-front)">
+        <ellipse cx="200" cy="200" rx="185" ry="38" fill="none" stroke="url(#cb-ring)" stroke-width="7" />
+        <ellipse cx="200" cy="200" rx="160" ry="31" fill="none" stroke="#a5f3fc" stroke-opacity="0.35" stroke-width="2" />
+      </g>
+    </svg>
+  </div>
+
+  <div class="cosmic-backdrop__fleet">
+    <div class="ship ship--cruiser" style="--y:20%;--dur:150s;--delay:-40s;--w:clamp(120px,15vw,230px);--dy:4vh">
+      <span class="ship__trail ship__trail--wide"></span>
+      <svg><use href="#cb-ship-cruiser" /></svg>
+    </div>
+    <div class="ship" style="--y:66%;--dur:38s;--delay:-12s;--w:clamp(36px,4.2vw,62px);--dy:-10vh">
+      <span class="ship__trail"></span>
+      <svg><use href="#cb-ship-fighter" /></svg>
+    </div>
+    {
+      isMenu && (
+        <>
+          <div class="ship ship--squad" style="--y:58%;--dur:44s;--delay:-30s;--w:clamp(28px,3.2vw,46px);--dy:-14vh">
+            <span class="ship__wing ship__wing--lead">
+              <span class="ship__trail" />
+              <svg>
+                <use href="#cb-ship-fighter" />
+              </svg>
+            </span>
+            <span class="ship__wing ship__wing--top">
+              <span class="ship__trail" />
+              <svg>
+                <use href="#cb-ship-fighter" />
+              </svg>
+            </span>
+            <span class="ship__wing ship__wing--bottom">
+              <span class="ship__trail" />
+              <svg>
+                <use href="#cb-ship-fighter" />
+              </svg>
+            </span>
+          </div>
+          <div class="ship ship--reverse" style="--y:36%;--dur:28s;--delay:-6s;--w:clamp(30px,3.2vw,48px);--dy:6vh">
+            <span class="ship__trail ship__trail--hot" />
+            <svg>
+              <use href="#cb-ship-scout" />
+            </svg>
+          </div>
+          <div class="ship ship--far" style="--y:82%;--dur:70s;--delay:-50s;--w:clamp(20px,2vw,30px);--dy:-4vh">
+            <span class="ship__trail" />
+            <svg>
+              <use href="#cb-ship-fighter" />
+            </svg>
+          </div>
+          <div class="ship ship--warp" style="--y:12%;--dur:19s;--delay:-3s;--w:clamp(34px,3.6vw,56px);--dy:2vh">
+            <span class="ship__trail ship__trail--hot ship__trail--long" />
+            <svg>
+              <use href="#cb-ship-scout" />
+            </svg>
+          </div>
+        </>
+      )
+    }
+    {
+      !isMenu && (
+        <div class="ship ship--reverse ship--far" style="--y:46%;--dur:95s;--delay:-20s;--w:clamp(22px,2.4vw,34px);--dy:-6vh">
+          <span class="ship__trail ship__trail--hot" />
+          <svg>
+            <use href="#cb-ship-scout" />
+          </svg>
+        </div>
+      )
+    }
+  </div>
+
+  <span class="cosmic-backdrop__meteor" style="--top:8%;--left:62%;--dur:11s;--delay:2s"></span>
+  {isMenu && <span class="cosmic-backdrop__meteor" style="--top:30%;--left:88%;--dur:17s;--delay:9s" />}
+
   <div class="cosmic-backdrop__grid"></div>
   <div class="cosmic-backdrop__vignette"></div>
 </div>

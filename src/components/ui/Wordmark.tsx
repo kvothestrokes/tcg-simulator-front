@@ -6,6 +6,8 @@
 interface WordmarkProps {
   size?: 'sm' | 'md' | 'lg';
   withRules?: boolean;
+  /** Intro, glifo orbitando y halo: para los menús, no para la mesa. */
+  animated?: boolean;
   className?: string;
 }
 
@@ -15,14 +17,19 @@ const SIZE: Record<'sm' | 'md' | 'lg', { text: string; glyph: number; gap: strin
   lg: { text: 'text-4xl sm:text-5xl', glyph: 40, gap: 'gap-4' },
 };
 
-export function Wordmark({ size = 'md', withRules = false, className = '' }: WordmarkProps) {
+export function Wordmark({
+  size = 'md',
+  withRules = false,
+  animated = false,
+  className = '',
+}: WordmarkProps) {
   const s = SIZE[size];
   return (
     <div className={`flex items-center justify-center ${s.gap} ${className}`}>
       {withRules ? <span className="h-px flex-1 bg-[var(--color-stroke-dim)]" /> : null}
 
-      <div className="flex items-center gap-3">
-        <OrbitGlyph size={s.glyph} />
+      <div className={`flex items-center gap-3 ${animated ? 'wordmark-intro wordmark-glow' : ''}`}>
+        <OrbitGlyph size={s.glyph} spin={animated} />
         <span className={`display text-aurora leading-[0.92] ${s.text}`}>
           <span className="block">Cosmic</span>
           <span className="block">Breaker</span>
@@ -34,9 +41,16 @@ export function Wordmark({ size = 'md', withRules = false, className = '' }: Wor
   );
 }
 
-function OrbitGlyph({ size }: { size: number }) {
+function OrbitGlyph({ size, spin }: { size: number; spin: boolean }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 40 40" fill="none" aria-hidden="true">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 40 40"
+      fill="none"
+      aria-hidden="true"
+      className={spin ? 'orbit-glyph--spin' : undefined}
+    >
       <circle cx="20" cy="20" r="12.5" stroke="currentColor" strokeWidth="1.2" opacity="0.9" />
       <ellipse
         cx="20"
