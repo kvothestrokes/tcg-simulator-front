@@ -21,6 +21,7 @@ import { deckIssueMessage } from '@/lib/decks/matchGate';
 import { DECK_RULES } from '@/lib/decks/validation';
 import { loginPath } from '@/lib/navigation';
 import { Panel } from '@/components/ui/Panel';
+import { Wordmark } from '@/components/ui/Wordmark';
 import { DeckList } from './DeckList';
 import { DeckEditor } from './DeckEditor';
 
@@ -249,12 +250,14 @@ export function DecksPanel() {
   }
 
   return (
-    <div className="flex flex-col gap-4 w-full max-w-7xl mx-auto">
-      <div className="flex items-center gap-3">
+    <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-4">
+      <div className="orbit-rings" aria-hidden="true" />
+      <div className="relative z-[1] flex items-center gap-3">
         <a className="btn btn--sm btn--ghost" href="/lobby">
           ← Back
         </a>
-        <h1 className="hud-title text-lg">Deck Builder</h1>
+        <Wordmark size="sm" />
+        <h1 className="hud-title text-aurora text-lg">Mazos</h1>
       </div>
 
       {error ? (

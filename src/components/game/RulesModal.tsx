@@ -40,14 +40,14 @@ export function RulesModal({ onClose }: RulesModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6"
+      className="modal-backdrop p-6"
       role="dialog"
       aria-modal="true"
       aria-labelledby="rules-title"
       onClick={onClose}
     >
       <div
-        className="max-h-[85vh] w-full max-w-3xl overflow-y-auto border border-[var(--color-stroke-faint)] bg-[var(--color-hull)] p-5"
+        className="modal-panel max-h-[85vh] w-full max-w-3xl overflow-y-auto p-5"
         onClick={(event) => event.stopPropagation()}
       >
         <header className="mb-4 flex items-start justify-between gap-3">

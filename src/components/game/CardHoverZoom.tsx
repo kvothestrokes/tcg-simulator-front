@@ -57,7 +57,7 @@ export function CardHoverZoom({ def, instance }: CardHoverZoomProps) {
 
   return (
     <div
-      className="pointer-events-none fixed z-[60] drop-shadow-[0_12px_40px_rgba(0,0,0,0.7)]"
+      className="pointer-events-none fixed z-[var(--z-zoom)] drop-shadow-[0_12px_40px_rgba(0,0,0,0.7)]"
       style={{ left, top }}
       aria-hidden
     >

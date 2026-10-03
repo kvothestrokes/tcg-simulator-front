@@ -43,14 +43,14 @@ export function CardViewerModal({ def, instance, onClose }: CardViewerModalProps
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-6"
+      className="modal-backdrop p-6"
       role="dialog"
       aria-modal="true"
       aria-label={def.nombre}
       onClick={onClose}
     >
       <div
-        className="relative flex max-h-full max-w-full flex-col items-center gap-3"
+        className="relative flex max-h-full max-w-full flex-col items-center gap-3 animate-scale-in"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex w-full items-center justify-between gap-3">

@@ -38,7 +38,7 @@ export function TestModePanel() {
 
   return (
     <div
-      className="fixed bottom-3 left-3 z-[60] w-64 border border-dashed border-amber-400/70 bg-black/85 p-2.5 text-[11px] text-amber-100 shadow-lg backdrop-blur"
+      className="fixed bottom-3 left-3 z-[var(--z-zoom)] w-64 border border-dashed border-amber-400/70 bg-black/85 p-2.5 text-[11px] text-amber-100 shadow-lg backdrop-blur"
       role="region"
       aria-label="Modo prueba"
     >

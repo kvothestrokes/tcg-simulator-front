@@ -92,7 +92,7 @@ export function CenterStrip({
         <div className="hud__inner flex w-full items-center gap-3">
           {/* Turno + chips de fase */}
           <div className="flex items-center gap-2">
-            <span className="hud-title tabular text-[11px]">Turno {turn}</span>
+            <span className="hud-title text-aurora tabular text-[11px]">Turno {turn}</span>
             <ol className="flex items-center gap-1" aria-label="Fases del turno">
               {PHASES.map((name, index) => (
                 <li

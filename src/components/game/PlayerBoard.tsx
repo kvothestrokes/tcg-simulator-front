@@ -460,6 +460,9 @@ export function PlayerBoard({
     >
       <header className="flex shrink-0 items-center gap-2 px-1">
         <StatusDot on={player?.connected ?? false} pulse={player?.connected} />
+        <span className="player-badge" aria-hidden="true">
+          {label.slice(0, 1).toUpperCase()}
+        </span>
         <span
           className="hud-title text-[11px]"
           style={active ? { color: 'var(--color-signal)' } : undefined}

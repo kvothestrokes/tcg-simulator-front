@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import CosmicBackdrop from '../components/ui/CosmicBackdrop.astro';
 
 interface Props {
   title: string;
@@ -31,7 +32,8 @@ const {
       rel="stylesheet"
     />
   </head>
-  <body class={fullscreen ? 'h-dvh overflow-hidden' : 'min-h-dvh'}>
+  <body class={fullscreen ? 'relative z-[1] h-dvh overflow-hidden' : 'relative z-[1] min-h-dvh'}>
+    <CosmicBackdrop />
     <slot />
   </body>
 </html>

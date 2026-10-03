@@ -23,7 +23,7 @@ export function Wordmark({ size = 'md', withRules = false, className = '' }: Wor
 
       <div className="flex items-center gap-3">
         <OrbitGlyph size={s.glyph} />
-        <span className={`display leading-[0.92] ${s.text}`}>
+        <span className={`display text-aurora leading-[0.92] ${s.text}`}>
           <span className="block">Cosmic</span>
           <span className="block">Breaker</span>
         </span>

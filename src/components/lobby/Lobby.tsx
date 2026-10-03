@@ -175,10 +175,12 @@ export function Lobby() {
   }
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="relative">
+      <div className="orbit-rings" aria-hidden="true" />
+      <div className="relative z-[1] flex flex-col gap-8">
       {rulesOpen ? <RulesModal onClose={() => setRulesOpen(false)} /> : null}
       <header className="flex flex-wrap items-center justify-between gap-4">
-        <Wordmark size="sm" />
+        <Wordmark size="md" />
         <div className="flex items-center gap-3 text-xs">
           <span className="hud-sub">
             {identity.label}
@@ -400,6 +402,7 @@ export function Lobby() {
           ) : null}
         </div>
       </Panel>
+      </div>
     </div>
   );
 }

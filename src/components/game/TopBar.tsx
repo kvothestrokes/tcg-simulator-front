@@ -64,12 +64,12 @@ export function TopBar({
   };
 
   return (
-    <header className="flex shrink-0 items-center gap-4 border-b border-[var(--color-stroke-faint)] px-3 py-1.5">
+    <header className="glass-top flex shrink-0 items-center gap-4 px-3 py-1.5">
       <Wordmark size="sm" />
 
       <div className="flex items-center gap-2">
         <span className="hud-sub">Sala</span>
-        <span className="display text-base tracking-[0.25em]">{code}</span>
+        <span className="display text-aurora text-base tracking-[0.25em]">{code}</span>
         <button
           type="button"
           className="btn btn--sm btn--ghost"

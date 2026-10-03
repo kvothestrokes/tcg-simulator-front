@@ -50,7 +50,7 @@ export function CardContextMenu({
     <>
       <button
         type="button"
-        className="fixed inset-0 z-40 cursor-default bg-transparent"
+        className="fixed inset-0 z-[var(--z-menu)] cursor-default bg-transparent"
         aria-label="Cerrar menú"
         onClick={onClose}
         onContextMenu={(event) => {
@@ -59,7 +59,7 @@ export function CardContextMenu({
         }}
       />
       <ul
-        className="fixed z-50 min-w-[180px] border border-[var(--color-stroke)] bg-[var(--color-hull)] py-1 text-[11px]"
+        className="modal-panel fixed z-[var(--z-modal)] min-w-[180px] py-1 text-[11px] animate-scale-in"
         style={{ left: menu.x, top: menu.y }}
         role="menu"
       >

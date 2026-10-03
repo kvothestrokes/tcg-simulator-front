@@ -105,7 +105,9 @@ export function SignIn() {
   }
 
   return (
-    <div className="w-full max-w-lg">
+    <div className="relative w-full max-w-lg">
+      <div className="orbit-rings" aria-hidden="true" />
+      <div className="relative z-[1]">
       <Wordmark size="lg" withRules className="mb-3" />
       <p className="mb-8 text-center text-sm text-[var(--color-ink-dim)]">
         Mesa virtual para partidas 1v1. Tú declaras las jugadas; el simulador solo las
@@ -200,6 +202,7 @@ export function SignIn() {
         <span className="text-[var(--color-stroke-faint)]">·</span>
         <span className="font-mono">{REALTIME_URL}</span>
       </footer>
+      </div>
     </div>
   );
 }

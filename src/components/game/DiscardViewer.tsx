@@ -38,14 +38,14 @@ export function DiscardViewer({ cards, ownerLabel, actions, onView, onClose }: D
 
   return (
     <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-6"
+      className="modal-backdrop p-6"
       role="dialog"
       aria-modal="true"
       aria-label="Visor de descarte"
       onClick={onClose}
     >
       <div
-        className="max-h-[80vh] w-full max-w-5xl overflow-y-auto border border-[var(--color-stroke-faint)] bg-[var(--color-hull)] p-4"
+        className="modal-panel max-h-[80vh] w-full max-w-5xl overflow-y-auto p-4"
         onClick={(event) => event.stopPropagation()}
       >
         <header className="mb-3 flex flex-wrap items-center justify-between gap-2">

@@ -14,7 +14,7 @@ import { CardContextMenu, type ContextMenuState } from './CardContextMenu';
 import { CenterStrip } from './CenterStrip';
 import { DeckActions, type DeckActionBlocks } from './DeckActions';
 import { DiscardViewer } from './DiscardViewer';
-import { Hand } from './Hand';
+import { Hand, HAND_TABLE_PADDING } from './Hand';
 import { PlayerBoard } from './PlayerBoard';
 import { RevealModal } from './RevealModal';
 import { RulesModal } from './RulesModal';
@@ -69,7 +69,7 @@ export function GameTable() {
   const [selection, setSelection] = useState<Selection>(null);
   const [hoverCard, setHoverCard] = useState<CardInstance | null>(null);
   const [zoomCard, setZoomCard] = useState<CardInstance | null>(null);
-  const [handCollapsed, setHandCollapsed] = useState(false);
+  const [handPinned, setHandPinned] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [viewerOpen, setViewerOpen] = useState(false);
   /** Whose void is open in the viewer (the opponent's is read-only). */
@@ -459,19 +459,19 @@ export function GameTable() {
         }}
       />
 
-      {lastError ? (
-        <p className="shrink-0 border-b border-[rgba(244,63,94,0.4)] bg-[rgba(244,63,94,0.1)] px-3 py-1 text-[11px] text-[#fda4af]">
-          {lastError.code}: {lastError.message}
-        </p>
-      ) : null}
-
-      {notice ? (
-        <p
-          className="shrink-0 border-b border-[rgba(251,191,36,0.4)] bg-[rgba(251,191,36,0.1)] px-3 py-1 text-[11px] text-[var(--color-heat)]"
-          role="status"
-        >
-          {notice}
-        </p>
+      {lastError || notice ? (
+        <div className="toast-stack">
+          {lastError ? (
+            <p className="toast toast--danger">
+              {lastError.code}: {lastError.message}
+            </p>
+          ) : null}
+          {notice ? (
+            <p className="toast" role="status">
+              {notice}
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       {attackSourceUid ? (
@@ -484,7 +484,7 @@ export function GameTable() {
       ) : null}
 
       <div className="flex min-h-0 min-w-[1480px] flex-1">
-        <div className="flex min-h-0 flex-1 flex-col gap-1.5 p-2">
+        <div className="flex min-h-0 flex-1 flex-col gap-1.5 p-2" style={{ paddingBottom: HAND_TABLE_PADDING }}>
           <PlayerBoard
             player={opponent}
             label={opponent ? nameFor(opponent.userId) : 'Esperando rival…'}
@@ -756,9 +756,8 @@ export function GameTable() {
         cards={deck.hand}
         selectedUid={selection?.kind === 'hand' ? selection.card.uid : undefined}
         onSelect={(card) => setSelection({ kind: 'hand', card })}
-        cardWidth={104}
-        collapsed={handCollapsed}
-        onToggle={() => setHandCollapsed((value) => !value)}
+        pinned={handPinned}
+        onTogglePin={() => setHandPinned((value) => !value)}
       />
 
       {rulesOpen ? <RulesModal onClose={() => setRulesOpen(false)} /> : null}
